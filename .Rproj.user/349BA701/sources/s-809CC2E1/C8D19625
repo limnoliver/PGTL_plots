@@ -1,0 +1,32 @@
+{
+    "id": "C8D19625",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1590513668738.0,
+    "source_on_save": false,
+    "relative_order": 8,
+    "properties": {
+        "cacheKey": "A20C3E7B",
+        "caption": "glm",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=glm&cache_key=A20C3E7B",
+        "displayedObservations": 44225,
+        "environment": "",
+        "expression": "glm",
+        "object": "glm",
+        "preview": 0,
+        "totalObservations": 44225,
+        "variables": 3
+    },
+    "folds": "",
+    "lastKnownWriteTime": 2688748688960,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1590513668738,
+    "read_only": false,
+    "read_only_alternatives": []
+}
