@@ -211,15 +211,17 @@ plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date
     scale_color_manual(values=c('Source 1'='#3014ea', 'Source 2'='#0086d6', 'Source 9'='#ffa22f')) + #https://www.color-hex.com/color-palette/67553
     scale_shape_manual(values=setNames(c(25, 24), nm=factor(common_depths))) +
     scale_fill_manual(values=setNames(c(obs_color,NA), nm=factor(common_depths))) +
-    theme_minimal()
+    theme_minimal() +
+    ggtitle(targets[target_num,] %>% mutate(label=sprintf('%s: PGMTL9 = %0.2f, PGMTL = %0.2f, PBall = %0.2f, PB0 = %0.2f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse)) %>% pull(label))
 }
 
 library(cowplot)
 ts_plots <- lapply(seq_len(nrow(targets)), plot_target_timeseries, min_date='2012-01-01', max_date='2013-12-31')
-cowplot::plot_grid(
+ts_grid <- cowplot::plot_grid(
   plotlist=c(ts_plots),
   nrow=4, ncol=1
 )
+cowplot::save_plot('figures/examples_timeseries.png', ts_grid, base_height=8, base_width=8)
 
 targets
 lake_metadata_full
@@ -246,3 +248,4 @@ ggplot(sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
   scale_x_log10() +
   scale_y_log10() +
   theme_bw()
+ggsave('figures/examples_depth_area.png', width=6, height=4)
