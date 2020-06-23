@@ -76,9 +76,9 @@ pball_eval_305 <- pball_eval_44225 %>%
   right_join(pball_mtl_305, by=c('target_id','source_id'))
 
 # Read PGMTL results from Jared
-pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv')
-pgmtl_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv')
-pgmtl9_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv')
+pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A')
+pgmtl_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv', na='N/A')
+pgmtl9_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv', na='N/A')
 jw_all_eval_305 <- readr::read_csv('data/305_lakes_results.csv') # includes predicted MTL and MLT9 RMSEs and lake metadata for those 305 lakes
 
 # Read results from ScienceBase
@@ -206,7 +206,7 @@ plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date
   
   obs_color <- 'gray30'
   ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=Depth, shape=Depth, fill=Depth)) +
-    geom_line(data=filter(plot_data, source != 'Observed')) +
+    geom_line(data=filter(plot_data, source != 'Observed'), alpha=0.8) +
     geom_point(data=filter(plot_data, source == 'Observed'), color=obs_color) +
     scale_color_manual(values=c('Source 1'='#3014ea', 'Source 2'='#0086d6', 'Source 9'='#ffa22f')) + #https://www.color-hex.com/color-palette/67553
     scale_shape_manual(values=setNames(c(25, 24), nm=factor(common_depths))) +
@@ -220,3 +220,29 @@ cowplot::plot_grid(
   plotlist=c(ts_plots),
   nrow=4, ncol=1
 )
+
+targets
+lake_metadata_full
+sources_info <- filter(pgmtl9_eval_305, target_id %in% targets$target_id) %>%
+  select(target_id, source_id, eval_rmse=rmse) %>% mutate(top_9=TRUE) %>%
+  filter(source_id != 'ENSEMBLE') %>%
+  full_join(select(pgmtl_train_305, target_id, source_id, rmse), by=c('target_id','source_id')) %>%
+  mutate(top_9=ifelse(is.na(top_9), FALSE, TRUE)) %>%
+  left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('source_id'='site_id'))
+# TODO: eval_rmse should equal rmse (when both are available) but does not
+targets_info <- jw_all_eval_305 %>%
+  filter(target_id %in% targets$target_id) %>%
+  select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
+  #left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
+
+# check that all sources are unique (no overlapping dots expected):
+sources_info %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
+
+ggplot(sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
+  geom_point(data=filter(sources_info, target_id==target_id[1]), color='gray90') + 
+  geom_point(data=filter(sources_info, top_9), aes(color=target_id, shape=target_id)) +
+  geom_point(data=targets_info, aes(color=target_id), shape=19, size=3) +
+  scale_shape_manual(values=c(4,3,2,1)) +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_bw()
