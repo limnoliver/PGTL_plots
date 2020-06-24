@@ -34,13 +34,16 @@ lapply(unlist(provided), function(site_num) {
   group <- lake_metadata %>%
     filter(site_id == sprintf('nhdhr_%s', site_num)) %>%
     pull(group_id)
-  zipfile <- sprintf('data/pb0_predictions_%s.zip', group)
-  if(!file.exists(zipfile)) {
-    sbtools::item_file_download(
-      sb_id='5ebe569582ce476925e44b2f',
-      names=basename(zipfile), destinations=zipfile)
-    if(!dir.exists('data/predictions')) dir.create('data/predictions')
-    unzip(zipfile, exdir='data/predictions')
+  for(model in c('pb0','pball','pgmtl','pgmtl9')) {
+    zipfile <- sprintf('data/%s_predictions_%s.zip', model, group)
+    if(!file.exists(zipfile)) {
+      message(sprintf('downloading %s', basename(zipfile)))
+      sbtools::item_file_download(
+        sb_id='5ebe569582ce476925e44b2f',
+        names=basename(zipfile), destinations=zipfile)
+      if(!dir.exists('data/predictions')) dir.create('data/predictions')
+      unzip(zipfile, exdir='data/predictions')
+    }
   }
 })
 
@@ -106,7 +109,7 @@ pgmtl_train_305 %>%
   filter(!is.na(pgmtl_rmse)) %>%
   ggplot(aes(x=all_sources_rmse, y=pgmtl_rmse)) + geom_point() + theme_bw() +
   xlab('all_sources rmse') + ylab('single_sources rmse')
-
+# fixed as of 6/23
 
 #### Select lakes ####
 
@@ -151,11 +154,11 @@ targets_in_context <- all_eval_305 %>%
       target_id %in% targets$target_id, 'selected',
       ifelse(target_id %in% sprintf('nhdhr_%s', unlist(provided)), 'available', 'unavailable')),
     marker_text = sprintf('%s\npgmtl9: %f\npgmtl: %f\npball: %f\npb0: %f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse))
-ggplot(targets_in_context, aes(x=pb0_rmse, y=pgmtl_rmse, color=status)) +
-  geom_point() + 
-  geom_point(data=filter(targets_in_context, status=='available')) +
-  geom_point(data=filter(targets_in_context, status=='selected')) +
-  scale_color_manual(values=c(selected='purple', available='seagreen', unavailable='lightgray')) +
+ggplot(targets_in_context, aes(x=pb0_rmse, y=pgmtl_rmse)) +
+  geom_point(data=filter(targets_in_context, status=='unavailable'), color='lightgray') + 
+  #geom_point(data=filter(targets_in_context, status=='available')) +
+  geom_point(data=filter(targets_in_context, status=='selected'), aes(color=target_id)) +
+  # scale_color_manual(values=c(selected='purple', available='seagreen', unavailable='lightgray')) +
   theme_bw()
 library(plotly)
 plot_ly(data = targets_in_context, x = ~pb0_rmse, y = ~pgmtl_rmse, text = ~marker_text) %>%
@@ -223,29 +226,115 @@ ts_grid <- cowplot::plot_grid(
 )
 cowplot::save_plot('figures/examples_timeseries.png', ts_grid, base_height=8, base_width=8)
 
-targets
-lake_metadata_full
-sources_info <- filter(pgmtl9_eval_305, target_id %in% targets$target_id) %>%
-  select(target_id, source_id, eval_rmse=rmse) %>% mutate(top_9=TRUE) %>%
-  filter(source_id != 'ENSEMBLE') %>%
-  full_join(select(pgmtl_train_305, target_id, source_id, rmse), by=c('target_id','source_id')) %>%
-  mutate(top_9=ifelse(is.na(top_9), FALSE, TRUE)) %>%
-  left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('source_id'='site_id'))
-# TODO: eval_rmse should equal rmse (when both are available) but does not
+sources_info_partial <- select(pgmtl_train_305, target_id, source_id, rmse, rmse_predicted) %>%
+  left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('source_id'='site_id')) %>%
+  group_by(target_id) %>%
+  mutate(
+    rank=rank(rmse),
+    rank_predicted=rank(rmse_predicted),
+    top_9 = rank_predicted <= 9) %>%
+  ungroup()
+target_summary <- sources_info %>%
+  group_by(target_id) %>%
+  summarize(
+    rmse_mean=mean(rmse),
+    rmse_median=median(rmse),
+    min_rank_top_9 = min(rank[top_9]),
+    max_rank_top_9 = max(rank[top_9]),
+    mean_rank_top_9 = mean(rank[top_9]),
+    median_rank_top_9 = median(rank[top_9])) %>%
+  ungroup() %>%
+  mutate(
+    site_rank_rmse_mean=rank(rmse_mean),
+    site_rank_rmse_median=rank(rmse_median))
+sources_info <- sources_info_partial %>% left_join(target_summary, by='target_id')
 targets_info <- jw_all_eval_305 %>%
   filter(target_id %in% targets$target_id) %>%
   select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
   #left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
 
-# check that all sources are unique (no overlapping dots expected):
-sources_info %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
+selected_sources_info <- filter(sources_info, target_id %in% targets$target_id)
+# note that some sources are used 2-3 times (dots will overlap)
+selected_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
 
-ggplot(sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
-  geom_point(data=filter(sources_info, target_id==target_id[1]), color='gray90') + 
-  geom_point(data=filter(sources_info, top_9), aes(color=target_id, shape=target_id)) +
+ggplot(selected_sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
+  geom_point(color='gray90') + 
+  geom_point(data=filter(selected_sources_info, top_9), aes(color=target_id, shape=target_id)) +
   geom_point(data=targets_info, aes(color=target_id), shape=19, size=3) +
   scale_shape_manual(values=c(4,3,2,1)) +
   scale_x_log10() +
   scale_y_log10() +
   theme_bw()
 ggsave('figures/examples_depth_area.png', width=6, height=4)
+
+selected_sources_info %>%
+  ggplot(aes(y=rmse_predicted, x=rmse, color=target_id, alpha=top_9)) +
+  geom_abline(color='lightgray') +
+  geom_point() +
+  theme_bw()
+# selected_sources_info %>%
+#   ggplot(aes(y=rank_predicted, x=rank, color=target_id, alpha=top_9)) +
+#   geom_hline(yintercept=9.5, color='gray70') +
+#   geom_point() +
+#   theme_bw()
+
+#### Metamodel figure ####
+
+sources_info %>%
+  ggplot(aes(x=site_rank_rmse_median, y=rmse, color=top_9)) +
+  geom_point(data=filter(sources_info, !top_9), alpha=0.3) +
+  geom_point(data=filter(sources_info, top_9), alpha=0.8) +
+  scale_color_manual(values=c(`TRUE`='#3a55b4', `FALSE`='#81de76')) +
+  theme_bw()
+sources_info %>%
+  ggplot(aes(x=site_rank_rmse_median, y=rmse, color=top_9)) +
+  geom_point(data=filter(sources_info, rank_predicted > 1), alpha=0.3) +
+  geom_point(data=filter(sources_info, rank_predicted == 1), alpha=0.8) +
+  scale_color_manual(values=c(`TRUE`='#3a55b4', `FALSE`='#81de76')) +
+  theme_bw()
+# filter(sources_info, top_9) %>%
+#   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
+#   geom_point(alpha=0.8, color='#3a55b4') +
+#   theme_bw()
+# filter(sources_info, rank==1) %>% 
+#   ggplot(aes(x=rmse_predicted, y=median_rank_top_9, color=max_depth)) +
+#   geom_point(alpha=0.8) +
+#   theme_bw()
+# target_summary %>% 
+#   ggplot(aes(x=site_rank_rmse_median, y=min_rank_top_9)) +
+#   geom_errorbar(aes(ymin=min_rank_top_9, ymax=max_rank_top_9)) +
+#   theme_bw()
+target_summary %>% 
+  ggplot(aes(x=site_rank_rmse_median, y=min_rank_top_9)) +
+  geom_point(aes(y=min_rank_top_9), color='navy') +
+  geom_point(aes(y=max_rank_top_9), color='lightblue') +
+  geom_point(aes(y=median_rank_top_9), color='blue') +
+  theme_bw() +
+  ylab('Min, median, and max ranks of 9 selected sources lakes') +
+  xlab('Target lakes ranked by median RMSE of all source lakes')
+
+filter(sources_info, rank_predicted==1) %>%
+  ggplot(aes(x=site_rank_rmse_median, y=rank)) +
+  geom_point() +
+  ylab('Actual rank of the source predicted to be rank 1') +
+  theme_bw()
+
+lm(median_rank_top_9 ~ max_depth + surface_area + n_obs + rmse_predicted,
+   data=filter(sources_info, rank<10)) %>%
+  summary()
+
+target_summary %>%
+  select(min_rank_top_9, max_rank_top_9, median_rank_top_9) %>%
+  pivot_longer(cols=everything(), names_to='rank_statistic', values_to='rank') %>%
+  ggplot(aes(x=rank_statistic, fill=rank_statistic)) + geom_violin(aes(y=rank), color=NA) +
+  scale_fill_manual(values=c(min_rank_top_9='navy', median_rank_top_9='blue', max_rank_top_9='lightblue')) +
+  ylim(0,145) +
+  theme_bw()
+filter(sources_info, rank_predicted==1) %>%
+  ggplot(aes(x='MLT-selected source', y=rank)) +
+  geom_violin(color=NA, fill='darkgray') +
+  geom_hline(aes(yintercept=median(rank))) +
+  ylab('Actual rank of the source predicted to be rank 1') +
+  ylim(0,145) +
+  theme_bw()
+filter(sources_info, rank_predicted==1) %>% summarize(median(rank))
