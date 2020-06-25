@@ -228,8 +228,10 @@ plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date
   target_class <- names(which(sapply(provided, function(.) any(grepl(gsub('nhdhr_', '', target), .)))))
   source_files <- dir(sprintf('data/%s_outputs/%s_outputs', target_class, target_class), pattern=sprintf('target_%s_.*source', target), full.names=TRUE)
   source_sites <- stringr::str_match(source_files, 'source_(nhdhr_[[:digit:]]+)_outputs.feather')[,2]
-  source_ranks <- filter(pgmtl9_eval_305, target_id == target, source_id %in% source_sites) %>% 
-    arrange(rmse) %>% # TODO: question for Jared: is this MTL-predicted or observed RMSE? what I'd really like right here is MTL-predicted
+  source_ranks <- pgmtl_train_305 %>%
+    filter(target_id == target) %>%
+    arrange(rmse_predicted) %>%
+    slice(1:9) %>%
     mutate(rank = 1:n()) %>%
     select(source_id, rmse, rank)
   sources <- purrr::map(setNames(source_files, nm=source_sites), function(source_file) {
@@ -267,7 +269,7 @@ plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date
     theme_minimal() +
     ggtitle(targets[target_num,] %>% mutate(label=sprintf('%s: PGMTL9 = %0.2f, PGMTL = %0.2f, PBall = %0.2f, PB0 = %0.2f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse)) %>% pull(label))
 }
-#plot_target_timeseries(1, min_date='2012-01-01', max_date='2013-12-31')
+plot_target_timeseries(3, min_date='2012-01-01', max_date='2013-12-31')
 
 library(cowplot)
 ts_plots <- lapply(seq_len(nrow(targets)), plot_target_timeseries, min_date='2012-01-01', max_date='2013-12-31')
@@ -282,19 +284,30 @@ ggplot(selected_sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
   geom_point(color='gray90') + 
   geom_point(data=filter(selected_sources_info, top_9), aes(color=target_id, shape=target_id)) +
   geom_point(data=targets_info, aes(color=target_id), shape=19, size=3) +
-  scale_shape_manual(values=c(4,3,2,1)) +
-  scale_color_manual(values=example_colors) +
-  scale_x_log10() +
+  scale_shape_manual('Lake', values=c(4,3,2,1)) +
+  scale_color_manual('Lake', values=example_colors) +
+  scale_size_continuous('Number of\nObservation Dates') +
+  scale_x_log10(labels=function(x) sprintf('%.0f', x)) +
   # scale_y_log10() +
+  xlab('Surface Area (units?)') + ylab('Maximum Depth (m)') +
   theme_bw()
 ggsave('figures/examples_depth_area.png', width=6, height=4)
 
 selected_sources_info %>%
-  ggplot(aes(y=rmse_predicted, x=rmse, color=target_id, alpha=top_9)) +
+  ggplot(aes(y=rmse_predicted, x=rmse, color=target_id, shape=target_id, fill=target_id,
+             size=rank_category, alpha=rank_category)) +
   geom_abline(color='lightgray') +
-  geom_point() +
-  scale_color_manual(values=example_colors) +
+  geom_point(data=filter(selected_sources_info, rank_predicted > 9)) +
+  geom_point(data=filter(selected_sources_info, rank_predicted <= 9, rank_predicted > 1)) +
+  geom_point(data=filter(selected_sources_info, rank_predicted == 1)) +
+  scale_alpha_manual('Metamodel\nprediction', values=c(1, 0.7, 0.2), breaks=levels(sources_info$rank_category)) +
+  scale_size_manual('Metamodel\nprediction', values=c(3, 1.8, 1), breaks=levels(sources_info$rank_category)) +
+  scale_shape_manual('Lake', values=c(24,23,22,21)) +
+  scale_color_manual('Lake', values=example_colors) +
+  scale_fill_manual('Lake', values=example_colors) +
+  xlab('Actual RMSE') + ylab('Predicted RMSE') +
   theme_bw()
+ggsave('figures/examples_rmse_predobs.png', width=6, height=4)
 
 #### Metamodel figure ####
 
