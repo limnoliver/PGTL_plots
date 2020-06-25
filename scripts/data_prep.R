@@ -69,6 +69,7 @@ sources_info_partial <- select(pgmtl_train_305, target_id, source_id, rmse, rmse
 target_summary <- sources_info_partial %>%
   group_by(target_id) %>%
   summarize(
+    rmse_min=min(rmse),
     rmse_mean=mean(rmse),
     rmse_median=median(rmse),
     rank_top_1 = rank[rank_predicted == 1],

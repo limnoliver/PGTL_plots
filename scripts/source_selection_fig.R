@@ -105,3 +105,9 @@ sources_info
 # were right but the transfer never would have been good"; top right - "we were
 # wrong, but it doesn't matter because the transfer never would have been good";
 # bottom right - "we were wrong, and the transfer could have been good"
+sources_info %>%
+  filter(rank_predicted <= 1) %>%
+  ggplot(aes(x=rank_predicted-rank, y=rmse_min)) +
+  geom_point() +
+  scale_y_log10() +
+  theme_bw()
