@@ -111,3 +111,9 @@ sources_info %>%
   geom_point() +
   scale_y_log10() +
   theme_bw()
+sources_info %>%
+  filter(rank_predicted <= 1) %>%
+  ggplot(aes(x=rmse_min, y=rmse)) +
+  geom_abline() +
+  geom_point() +
+  theme_bw()
