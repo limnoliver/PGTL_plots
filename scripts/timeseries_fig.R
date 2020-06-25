@@ -169,7 +169,58 @@ plot_ly(data = targets_in_context, x = ~pb0_rmse, y = ~pgmtl_rmse, text = ~marke
   add_trace(data=dplyr::filter(targets_in_context, status=='selected'),
             name = 'selected', type = 'scatter', mode = 'markers', marker = list(color='purple'))
 
-#### Plot
+#### Munge data ####
+
+sources_info_partial <- select(pgmtl_train_305, target_id, source_id, rmse, rmse_predicted) %>%
+  left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('source_id'='site_id')) %>%
+  group_by(target_id) %>%
+  mutate(
+    rank=rank(rmse),
+    rank_predicted=rank(rmse_predicted),
+    top_9 = rank_predicted <= 9,
+    rank_category = ifelse(rank_predicted == 1, 'Top 1', ifelse(rank_predicted <= 9, 'Top 9', 'Not Top 9')) %>%
+      ordered(levels=c('Top 1', 'Top 9', 'Not Top 9'))) %>%
+  ungroup()
+target_summary <- sources_info_partial %>%
+  group_by(target_id) %>%
+  summarize(
+    rmse_mean=mean(rmse),
+    rmse_median=median(rmse),
+    rank_top_1 = rank[rank_predicted == 1],
+    min_rank_top_9 = min(rank[top_9]),
+    max_rank_top_9 = max(rank[top_9]),
+    mean_rank_top_9 = mean(rank[top_9]),
+    median_rank_top_9 = median(rank[top_9])) %>%
+  ungroup() %>%
+  mutate(
+    site_rank_rmse_mean=rank(rmse_mean),
+    site_rank_rmse_median=rank(rmse_median),
+    site_rank_rank_top_1 = rank(rank_top_1, ties.method='first'),
+    site_rank_min_rank_top_9 = rank(min_rank_top_9, ties.method='first'),
+    site_rank_median_rank_top_9 = rank(median_rank_top_9, ties.method='first'),
+    site_rank_mean_rank_top_9 = rank(mean_rank_top_9, ties.method='first'),
+    site_rank_max_rank_top_9 = rank(max_rank_top_9, ties.method='first'))
+sources_info <- sources_info_partial %>% left_join(target_summary, by='target_id')
+targets_info <- jw_all_eval_305 %>%
+  filter(target_id %in% targets$target_id) %>%
+  select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
+#left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
+selected_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id)
+# note that some sources are used 2-3 times (dots will overlap)
+selected_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
+
+#### Styles ####
+
+model_colors <-  c(
+  setNames(RColorBrewer::brewer.pal(4, 'Dark2'), c('PB-MTL','PG-MTL','PG-MTL9','Obs')),
+  'PB0'='darkgray')
+pbmtl_colors <- c(dark='#105d46', central='#7570b3', light='#2bdba6') # https://www.colorhexa.com/1B9E77
+pgmtl9_colors <- c(dark='#4f4a8c', central='#7570b3', light='#a5a2ce', neutral='#e4e3f0') # https://www.colorhexa.com/7570b3
+pgmtl_colors <- c(dark='#8d3e01', central='#d95f02', light='#fd862a') # https://www.colorhexa.com/D95F02
+neutral_colors <- c(dark='darkgray', light='lightgray')
+example_colors <-  c("#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf")[c(4,7,1,10)]
+
+#### Timeseries Figure ####
 
 # date range for nhdhr_91688597: "2010-10-05" "2014-10-08" # should it be so limited?
 plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date='2013-12-31') {
@@ -178,7 +229,7 @@ plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date
   source_files <- dir(sprintf('data/%s_outputs/%s_outputs', target_class, target_class), pattern=sprintf('target_%s_.*source', target), full.names=TRUE)
   source_sites <- stringr::str_match(source_files, 'source_(nhdhr_[[:digit:]]+)_outputs.feather')[,2]
   source_ranks <- filter(pgmtl9_eval_305, target_id == target, source_id %in% source_sites) %>% 
-    arrange(rmse) %>% # question for Jared: is this MTL-predicted or observed RMSE? what I'd really like right here is MTL-predicted
+    arrange(rmse) %>% # TODO: question for Jared: is this MTL-predicted or observed RMSE? what I'd really like right here is MTL-predicted
     mutate(rank = 1:n()) %>%
     select(source_id, rmse, rank)
   sources <- purrr::map(setNames(source_files, nm=source_sites), function(source_file) {
@@ -207,16 +258,16 @@ plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date
     mutate(Model = ifelse(grepl('nhdhr', source), sprintf('Source %d', rank), source),
            Depth = factor(depth))
   
-  obs_color <- 'gray30'
   ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=Depth, shape=Depth, fill=Depth)) +
     geom_line(data=filter(plot_data, source != 'Observed'), alpha=0.8) +
-    geom_point(data=filter(plot_data, source == 'Observed'), color=obs_color) +
-    scale_color_manual(values=c('Source 1'='#3014ea', 'Source 2'='#0086d6', 'Source 9'='#ffa22f')) + #https://www.color-hex.com/color-palette/67553
+    geom_point(data=filter(plot_data, source == 'Observed'), color=model_colors['Obs']) +
+    scale_color_manual(values=c('Source 1'=pgmtl_colors[['central']], 'Source 2'=pgmtl9_colors[['dark']], 'Source 9'=pgmtl9_colors[['neutral']])) + #https://www.color-hex.com/color-palette/67553
     scale_shape_manual(values=setNames(c(25, 24), nm=factor(common_depths))) +
-    scale_fill_manual(values=setNames(c(obs_color,NA), nm=factor(common_depths))) +
+    scale_fill_manual(values=setNames(c(model_colors['Obs'],NA), nm=factor(common_depths))) +
     theme_minimal() +
     ggtitle(targets[target_num,] %>% mutate(label=sprintf('%s: PGMTL9 = %0.2f, PGMTL = %0.2f, PBall = %0.2f, PB0 = %0.2f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse)) %>% pull(label))
 }
+#plot_target_timeseries(1, min_date='2012-01-01', max_date='2013-12-31')
 
 library(cowplot)
 ts_plots <- lapply(seq_len(nrow(targets)), plot_target_timeseries, min_date='2012-01-01', max_date='2013-12-31')
@@ -226,44 +277,15 @@ ts_grid <- cowplot::plot_grid(
 )
 cowplot::save_plot('figures/examples_timeseries.png', ts_grid, base_height=8, base_width=8)
 
-sources_info_partial <- select(pgmtl_train_305, target_id, source_id, rmse, rmse_predicted) %>%
-  left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('source_id'='site_id')) %>%
-  group_by(target_id) %>%
-  mutate(
-    rank=rank(rmse),
-    rank_predicted=rank(rmse_predicted),
-    top_9 = rank_predicted <= 9) %>%
-  ungroup()
-target_summary <- sources_info %>%
-  group_by(target_id) %>%
-  summarize(
-    rmse_mean=mean(rmse),
-    rmse_median=median(rmse),
-    min_rank_top_9 = min(rank[top_9]),
-    max_rank_top_9 = max(rank[top_9]),
-    mean_rank_top_9 = mean(rank[top_9]),
-    median_rank_top_9 = median(rank[top_9])) %>%
-  ungroup() %>%
-  mutate(
-    site_rank_rmse_mean=rank(rmse_mean),
-    site_rank_rmse_median=rank(rmse_median))
-sources_info <- sources_info_partial %>% left_join(target_summary, by='target_id')
-targets_info <- jw_all_eval_305 %>%
-  filter(target_id %in% targets$target_id) %>%
-  select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
-  #left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
-
-selected_sources_info <- filter(sources_info, target_id %in% targets$target_id)
-# note that some sources are used 2-3 times (dots will overlap)
-selected_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
 
 ggplot(selected_sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
   geom_point(color='gray90') + 
   geom_point(data=filter(selected_sources_info, top_9), aes(color=target_id, shape=target_id)) +
   geom_point(data=targets_info, aes(color=target_id), shape=19, size=3) +
   scale_shape_manual(values=c(4,3,2,1)) +
+  scale_color_manual(values=example_colors) +
   scale_x_log10() +
-  scale_y_log10() +
+  # scale_y_log10() +
   theme_bw()
 ggsave('figures/examples_depth_area.png', width=6, height=4)
 
@@ -271,27 +293,20 @@ selected_sources_info %>%
   ggplot(aes(y=rmse_predicted, x=rmse, color=target_id, alpha=top_9)) +
   geom_abline(color='lightgray') +
   geom_point() +
+  scale_color_manual(values=example_colors) +
   theme_bw()
-# selected_sources_info %>%
-#   ggplot(aes(y=rank_predicted, x=rank, color=target_id, alpha=top_9)) +
-#   geom_hline(yintercept=9.5, color='gray70') +
-#   geom_point() +
-#   theme_bw()
 
 #### Metamodel figure ####
 
 sources_info %>%
-  ggplot(aes(x=site_rank_rmse_median, y=rmse, color=top_9)) +
-  geom_point(data=filter(sources_info, !top_9), alpha=0.3) +
-  geom_point(data=filter(sources_info, top_9), alpha=0.8) +
-  scale_color_manual(values=c(`TRUE`='#3a55b4', `FALSE`='#81de76')) +
-  theme_bw()
-sources_info %>%
-  ggplot(aes(x=site_rank_rmse_median, y=rmse, color=top_9)) +
-  geom_point(data=filter(sources_info, rank_predicted > 1), alpha=0.3) +
-  geom_point(data=filter(sources_info, rank_predicted == 1), alpha=0.8) +
-  scale_color_manual(values=c(`TRUE`='#3a55b4', `FALSE`='#81de76')) +
-  theme_bw()
+  ggplot(aes(x=site_rank_rmse_median, y=rmse, color=rank_category)) +# site_rank_rank_top_1, site_rank_rmse_median, median_rank_top_9, min_rank_top_9
+  geom_point(data=filter(sources_info, rank_category == 'Not Top 9'), alpha=0.3, size=1) +
+  geom_point(data=filter(sources_info, rank_category == 'Top 9'), alpha=0.5, size=1) +
+  geom_point(data=filter(sources_info, rank_category == 'Top 1'), size=1) +
+  scale_color_manual('Metamodel\nprediction', breaks=c('Not Top 9', 'Top 9', 'Top 1'), values=c('Top 1'=model_colors[['PG-MTL']], 'Top 9'=model_colors[['PG-MTL9']], 'Not Top 9'=neutral_colors[['light']])) +
+  theme_bw() +
+  xlab('Target sites ranked by median actual RMSE of top 9 source models') +
+  ylab('Actual RMSE of source applied to target')
 # filter(sources_info, top_9) %>%
 #   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
 #   geom_point(alpha=0.8, color='#3a55b4') +
@@ -304,37 +319,61 @@ sources_info %>%
 #   ggplot(aes(x=site_rank_rmse_median, y=min_rank_top_9)) +
 #   geom_errorbar(aes(ymin=min_rank_top_9, ymax=max_rank_top_9)) +
 #   theme_bw()
-target_summary %>% 
-  ggplot(aes(x=site_rank_rmse_median, y=min_rank_top_9)) +
-  geom_point(aes(y=min_rank_top_9), color='navy') +
-  geom_point(aes(y=max_rank_top_9), color='lightblue') +
-  geom_point(aes(y=median_rank_top_9), color='blue') +
-  theme_bw() +
-  ylab('Min, median, and max ranks of 9 selected sources lakes') +
-  xlab('Target lakes ranked by median RMSE of all source lakes')
+# target_summary %>% 
+#   ggplot(aes(x=site_rank_rmse_median, y=min_rank_top_9)) + # site_rank_rmse_median, median_rank_top_9, min_rank_top_9
+#   geom_point(aes(y=min_rank_top_9), color='navy') +
+#   geom_point(aes(y=max_rank_top_9), color='lightblue') +
+#   geom_point(aes(y=median_rank_top_9), color='blue') +
+#   theme_bw() +
+#   ylab('Min, median, and max ranks of 9 selected sources lakes') +
+#   xlab('Target lakes ranked by median RMSE of all source lakes')
+# filter(sources_info, rank_predicted==1) %>%
+#   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
+#   geom_point() +
+#   ylab('Actual rank of the source predicted to be rank 1') +
+#   theme_bw()
 
-filter(sources_info, rank_predicted==1) %>%
-  ggplot(aes(x=site_rank_rmse_median, y=rank)) +
-  geom_point() +
-  ylab('Actual rank of the source predicted to be rank 1') +
-  theme_bw()
-
-lm(median_rank_top_9 ~ max_depth + surface_area + n_obs + rmse_predicted,
-   data=filter(sources_info, rank<10)) %>%
-  summary()
-
-target_summary %>%
-  select(min_rank_top_9, max_rank_top_9, median_rank_top_9) %>%
+beanplot_data <- target_summary %>%
+  select(rank_top_1, min_rank_top_9, max_rank_top_9, median_rank_top_9) %>%
   pivot_longer(cols=everything(), names_to='rank_statistic', values_to='rank') %>%
-  ggplot(aes(x=rank_statistic, fill=rank_statistic)) + geom_violin(aes(y=rank), color=NA) +
-  scale_fill_manual(values=c(min_rank_top_9='navy', median_rank_top_9='blue', max_rank_top_9='lightblue')) +
+  mutate(rank_statistic_label = c(
+    'rank_top_1'='Predicted best',
+    'min_rank_top_9'='Actual best\nof 9 predicted best',
+    'median_rank_top_9'='Actual median\nof 9 predicted best',
+    'max_rank_top_9'='Actual worst\nof 9 predicted best'
+  )[rank_statistic] %>% ordered())
+beanplot_summary <- beanplot_data %>%
+  group_by(rank_statistic_label) %>%
+  summarize(
+    q25=quantile(rank, 0.25),
+    q50=quantile(rank, 0.50),
+    q75=quantile(rank, 0.75)) %>%
+  pivot_longer(cols=starts_with('q'), names_to='quantile', names_prefix='q', values_to='rank') %>%
+  mutate(hline_x=as.numeric(rank_statistic_label))
+ggplot(beanplot_data, aes(x=rank_statistic_label)) +
+  geom_violin(aes(y=rank, fill=rank_statistic), color=NA, trim=FALSE, scale='area') +
+  scale_fill_manual(
+    guide='none',
+    values=c(rank_top_1=pgmtl_colors[['central']], min_rank_top_9=pgmtl9_colors[['dark']],
+             median_rank_top_9=pgmtl9_colors[['central']], max_rank_top_9=pgmtl9_colors[['light']])) +
+  geom_errorbarh(
+    data=filter(beanplot_summary, quantile == '50'),
+    aes(xmin=hline_x-0.1, xmax=hline_x+0.1, y=rank),
+    size=0.8, height=0, color='gray80') +
+  geom_errorbarh(
+    data=filter(beanplot_summary, quantile != '50'),
+    aes(xmin=hline_x-0.03, xmax=hline_x+0.03, y=rank),
+    size=0.8, height=0, color='gray80') +
   ylim(0,145) +
+  xlab('Source model') +
+  ylab('Actual rank of source model by RMSE') +
   theme_bw()
-filter(sources_info, rank_predicted==1) %>%
-  ggplot(aes(x='MLT-selected source', y=rank)) +
-  geom_violin(color=NA, fill='darkgray') +
-  geom_hline(aes(yintercept=median(rank))) +
-  ylab('Actual rank of the source predicted to be rank 1') +
-  ylim(0,145) +
-  theme_bw()
+# filter(sources_info, rank_predicted==1) %>%
+#   ggplot(aes(x='MLT-selected source', y=rank)) +
+#   geom_violin(color=NA, fill='darkgray') +
+#   geom_hline(aes(yintercept=median(rank))) +
+#   ylab('Actual rank of the source predicted to be rank 1') +
+#   ylim(0,145) +
+#   theme_bw()
 filter(sources_info, rank_predicted==1) %>% summarize(median(rank))
+filter(sources_info, rank_predicted<=9) %>% summarize(median(rank))
