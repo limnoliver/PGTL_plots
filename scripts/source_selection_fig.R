@@ -4,7 +4,7 @@ source('scripts/data_prep.R')
 
 #### Metamodel figure ####
 
-sources_info %>%
+rankplot <- sources_info %>%
   ggplot(aes(x=site_rank_rmse_median, y=rmse, color=rank_category)) +# site_rank_rank_top_1, site_rank_rmse_median, median_rank_top_9, min_rank_top_9
   geom_point(data=filter(sources_info, rank_category == 'Not Top 9'), alpha=0.3, size=1) +
   geom_point(data=filter(sources_info, rank_category == 'Top 9'), alpha=0.5, size=1) +
@@ -13,6 +13,8 @@ sources_info %>%
   theme_bw() +
   xlab('Target sites ranked by median actual RMSE of top 9 source models') +
   ylab('Actual RMSE of source applied to target')
+rankplot
+ggsave('figures/metamodel_rankplot.png', rankplot, width=7, height=4)
 # filter(sources_info, top_9) %>%
 #   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
 #   geom_point(alpha=0.8, color='#3a55b4') +
@@ -56,7 +58,7 @@ beanplot_summary <- beanplot_data %>%
     q75=quantile(rank, 0.75)) %>%
   pivot_longer(cols=starts_with('q'), names_to='quantile', names_prefix='q', values_to='rank') %>%
   mutate(hline_x=as.numeric(rank_statistic_label))
-ggplot(beanplot_data, aes(x=rank_statistic_label)) +
+beanplot <- ggplot(beanplot_data, aes(x=rank_statistic_label)) +
   geom_violin(aes(y=rank, fill=rank_statistic), color=NA, trim=FALSE, scale='area') +
   scale_fill_manual(
     guide='none',
@@ -80,6 +82,8 @@ ggplot(beanplot_data, aes(x=rank_statistic_label)) +
   xlab('Source model') +
   ylab('Actual rank of source model by RMSE') +
   theme_bw()
+beanplot
+ggsave('figures/metamodel_beanplot.png', beanplot, width=7, height=4)
 # filter(sources_info, rank_predicted==1) %>%
 #   ggplot(aes(x='MLT-selected source', y=rank)) +
 #   geom_violin(color=NA, fill='darkgray') +

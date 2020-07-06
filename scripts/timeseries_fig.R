@@ -65,7 +65,9 @@ eg_targets_info <- jw_all_eval_305 %>%
   filter(target_id %in% targets$target_id) %>%
   select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
 #left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
-eg_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id)
+eg_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id) %>%
+  left_join(select(filter(lake_metadata, site_id %in% targets$target_id), site_id, target_name=lake_name), by=c('target_id'='site_id')) %>%
+  mutate(target_name = ifelse(!is.na(target_name), target_name, gsub('nhdhr_', '', target_id)))
 # note that some sources are used 2-3 times (dots will overlap)
 eg_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
 
@@ -94,72 +96,97 @@ read_timeseries_data <- function(targets, target_num=3) {
   labels <- read_preds_feather(sprintf('data/%s_outputs/%s_outputs/target_%s_labels.feather', target_class, target_class, target)) %>%
     mutate(source='Observed')
   
-  return(list(sources=sources, labels=labels))
+  bind_rows(sources, labels) %>%
+    mutate(target=target) %>%
+    return()
 }
+all_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
+  read_timeseries_data(targets, target_num)
+}) %>%
+  bind_rows()
 
-# date range for nhdhr_91688597: "2010-10-05" "2014-10-08" # should it be so limited?
-plot_target_timeseries <- function(targets, target_num=3, target_data, min_date='2012-01-01', max_date='2013-12-31') {
-  
-  common_depths <- target_data$labels %>%
+plot_all_target_data <- function(all_target_data, min_date='2012-01-01', max_date='2013-12-31') {
+  common_depths <- all_target_data %>%
+    filter(source == 'Observed') %>%
     filter(!is.na(temp_c), date >= as.Date(min_date), date <= as.Date(max_date)) %>%
-    group_by(depth) %>% 
+    group_by(target, depth) %>% 
     tally() %>%
     filter(n > 0.6*max(n)) %>%
     arrange(depth) %>%
     slice(c(1,n())) %>%
-    pull(depth)
-  plot_data <- bind_rows(target_data$sources, target_data$labels) %>% # pb0, ensemble
+    distinct() %>%
+    mutate(depth_class=c('shallow','deep')[1:n()]) %>%
+    select(target, depth, depth_class)
+  plot_data <- all_target_data %>%
     filter(!is.na(temp_c), date >= as.Date(min_date), date <= as.Date(max_date)) %>%
-    filter(depth %in% common_depths, is.na(rank) | rank %in% c(1,2,9)) %>%
+    right_join(common_depths, by=c('target','depth')) %>%
+    filter(is.na(rank) | rank %in% c(1,2,9)) %>%
     mutate(Model = ifelse(grepl('nhdhr', source), sprintf('Source %d', rank), source),
-           Depth = factor(depth))
-  
-  ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=Depth, shape=Depth, fill=Depth)) +
+           DepthClass = ordered(depth_class, levels=c('shallow','deep'))) %>%
+    left_join(select(eg_targets_info, target_id, target_name), by=c('target'='target_id'))
+  ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=DepthClass, shape=DepthClass, fill=DepthClass)) +
     geom_line(data=filter(plot_data, source != 'Observed'), alpha=0.8) +
     geom_point(data=filter(plot_data, source == 'Observed'), color=model_colors['Obs']) +
-    scale_color_manual(values=c('Source 1'=pgmtl_colors[['central']], 'Source 2'=pgmtl9_colors[['dark']], 'Source 9'=pgmtl9_colors[['neutral']])) + #https://www.color-hex.com/color-palette/67553
-    scale_shape_manual(values=setNames(c(25, 24), nm=factor(common_depths))) +
-    scale_fill_manual(values=setNames(c(model_colors['Obs'],NA), nm=factor(common_depths))) +
+    scale_color_manual(values=c('Source 1'=pgmtl_colors[['central']], 'Source 2'=pgmtl9_colors[['dark']], 'Source 9'=map_colors[['extended_targets']])) + #https://www.color-hex.com/color-palette/67553
+    scale_shape_manual(values=setNames(c(25, 24), nm=levels(plot_data$DepthClass))) +
+    scale_fill_manual(values=setNames(c(model_colors['Obs'],NA), nm=levels(plot_data$DepthClass))) +
+    xlab('Date') +
+    ylab(expression(paste("Temperature (",degree,"C)"))) +
     theme_minimal() +
-    ggtitle(targets[target_num,] %>% mutate(label=sprintf('%s: PGMTL9 = %0.2f, PGMTL = %0.2f, PBall = %0.2f, PB0 = %0.2f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse)) %>% pull(label))
+    facet_grid(target_name ~ .) +
+    theme(legend.position='bottom')
+    #ggtitle(targets[target_num,] %>% mutate(label=sprintf('%s: PGMTL9 = %0.2f, PGMTL = %0.2f, PBall = %0.2f, PB0 = %0.2f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse)) %>% pull(label))
 }
-target_num=3; plot_target_timeseries(targets, target_num, target_data=read_timeseries_data(targets, target_num), min_date='2012-01-01', max_date='2013-12-31')
+egplot_timeseries <- plot_all_target_data(all_target_data, min_date='2012-01-01', max_date='2013-12-31')
+egplot_timeseries
 
-library(cowplot)
-ts_plots <- lapply(seq_len(nrow(targets)), plot_target_timeseries, min_date='2012-01-01', max_date='2013-12-31')
-ts_grid <- cowplot::plot_grid(
-  plotlist=c(ts_plots),
-  nrow=4, ncol=1
-)
-cowplot::save_plot('figures/examples_timeseries.png', ts_grid, base_height=8, base_width=8)
-
-
-ggplot(eg_sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
+egplot_depth_area <- ggplot(eg_sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
   geom_point(color='gray90') + 
-  geom_point(data=filter(eg_sources_info, top_9), aes(color=target_id, shape=target_id)) +
-  geom_point(data=eg_targets_info, aes(color=target_id), shape=19, size=3) +
-  scale_shape_manual('Lake', values=c(4,3,2,1)) +
-  scale_color_manual('Lake', values=example_colors) +
+  geom_point(data=filter(eg_sources_info, top_9), aes(color=target_name, shape=target_name)) +
+  geom_point(data=eg_targets_info, aes(color=target_name), shape=19, size=3) +
+  scale_shape_manual('Target Lake', values=c(4,3,2,1)) +
+  scale_color_manual('Target Lake', values=example_colors) +
   scale_size_continuous('Number of\nObservation Dates') +
   scale_x_log10(labels=function(x) sprintf('%.0f', x)) +
   # scale_y_log10() +
   xlab('Surface Area (units?)') + ylab('Maximum Depth (m)') +
-  theme_bw()
-ggsave('figures/examples_depth_area.png', width=6, height=4)
+  theme_bw() +
+  theme(
+    legend.position=c(0.15, 0.65),
+    legend.background=element_blank())
+    #legend.key.size=unit(10, units='points'),
+    #legend.title=element_text(size=unit(10, units='points')),
+    #legend.spacing.y=unit(5, units='points'))
+egplot_depth_area
+ggsave('figures/examples_depth_area.png', plot=egplot_depth_area, width=6, height=4)
 
-eg_sources_info %>%
-  ggplot(aes(y=rmse_predicted, x=rmse, color=target_id, shape=target_id, fill=target_id,
-             size=rank_category, alpha=rank_category)) +
+egplot_rmse_predobs <- eg_sources_info %>%
+  ggplot(aes(y=rmse_predicted, x=rmse, shape=target_name, fill=target_name,
+             color=rank_category, size=rank_category, alpha=rank_category)) +
   geom_abline(color='lightgray') +
   geom_point(data=filter(eg_sources_info, rank_predicted > 9)) +
   geom_point(data=filter(eg_sources_info, rank_predicted <= 9, rank_predicted > 1)) +
   geom_point(data=filter(eg_sources_info, rank_predicted == 1)) +
-  scale_alpha_manual('Metamodel\nprediction', values=c(1, 0.7, 0.2), breaks=levels(sources_info$rank_category)) +
-  scale_size_manual('Metamodel\nprediction', values=c(3, 1.8, 1), breaks=levels(sources_info$rank_category)) +
-  scale_shape_manual('Lake', values=c(24,23,22,21)) +
-  scale_color_manual('Lake', values=example_colors) +
-  scale_fill_manual('Lake', values=example_colors) +
+  scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(sources_info$rank_category)) +
+  scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(sources_info$rank_category)) +
+  scale_color_manual(guide='none', values=c('black','white','white'), breaks=levels(sources_info$rank_category)) +
+  scale_shape_manual('Target Lake', values=c(24,23,22,21), guide='none') +
+  scale_fill_manual('Target Lake', values=example_colors, guide='none') +
+  scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = c(1, 21), ylim = c(1, 21)) +
   xlab('Actual RMSE') + ylab('Predicted RMSE') +
-  theme_bw()
-ggsave('figures/examples_rmse_predobs.png', width=6, height=4)
+  theme_bw() + theme(legend.position=c(0.15,0.8), legend.background=element_blank())
+egplot_rmse_predobs
+ggsave('figures/examples_rmse_predobs.png', plot=egplot_rmse_predobs, width=6, height=4)
 
+library(gridExtra)
+examples_figure <- grid.arrange(
+  grobs = list(
+    egplot_timeseries,
+    egplot_depth_area,
+    egplot_rmse_predobs
+  ),
+  widths = c(1, 1),
+  layout_matrix = rbind(c(1, 2),
+                        c(1, 3))
+)
+cowplot::save_plot('figures/examples_figure.png', examples_figure, base_height=10, base_width=12)
