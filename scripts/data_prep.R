@@ -18,7 +18,14 @@ read_preds_csv <- function(preds_file) {
     pivot_longer(cols=starts_with('temp_'), names_to='depth', names_prefix='temp_', 
                  names_transform=list(depth=as.numeric), values_to='temp_c') 
 }
-
+# new format from Jared as of 7/6/20
+read_preds_mtl_outputs_for_fig <- function(preds_file) {
+  feather::read_feather(preds_file) %>%
+    pivot_longer(cols=-index, names_to='date', names_transform=list(depth=as.Date), values_to='temp_c') %>%
+    mutate(depth=as.numeric(index)) %>%
+    select(-index)
+}
+  
 # Read lake metadata
 lake_metadata_full <- readr::read_csv('data/source_metadata.csv')
 lake_metadata <- readr::read_csv('data/lake_metadata.csv')
@@ -35,10 +42,12 @@ pball_eval_305 <- pball_eval_44225 %>%
   right_join(pball_mtl_305, by=c('target_id','source_id'))
 
 # Read PGMTL results from Jared
-pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A')
-pgmtl_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv', na='N/A')
-pgmtl9_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv', na='N/A')
-jw_all_eval_305 <- readr::read_csv('data/305_lakes_results.csv') # includes predicted MTL and MLT9 RMSEs and lake metadata for those 305 lakes
+pbmtl_train_305 <- readr::read_csv('data/PB-MTL_all_sources_with_predictions.csv', na='N/A') # new 7/6/20
+# pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A') # NOT updated 7/6/20
+pgmtl_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv', na='N/A') # updated 7/6/20
+pgmtl9_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv', na='N/A') # updated 7/6/20
+pgmtl9_evalplus_305 <- readr::read_csv('data/PG-MTL9_305Lakes_PredictedRMSEStats_metadata.csv', na='N/A') # new 7/6/20
+# jw_all_eval_305 <- readr::read_csv('data/305_lakes_results.csv') # NOT updated 7/6/20 # includes predicted MTL and MLT9 RMSEs and lake metadata for those 305 lakes
 
 # Read results from ScienceBase
 pb0_eval_2364 <- read_csv('data/pb0_evaluation.csv')
