@@ -1,114 +1,8 @@
-library(feather)
 library(tidyverse)
+source('scripts/style.R')
+source('scripts/data_prep.R')
 
-#### Get data ####
-
-# single links shared by Jared:
-# data/source_metadata.csv from https://docs.google.com/spreadsheets/d/1DnPHR1f7YZnsZXusF9MWCiHdgRh6BmhXlJfwq2zm8u8/edit#gid=19987048
-# data/305_lakes_results.csv from https://docs.google.com/spreadsheets/d/1SK_0i8Qkpydn9ACb4AIfy7qWU6xUipWqOpzrFFpmWmM/edit?usp=sharing
-
-# from Jordan via Teams 6/19
-# data/GLM_metamodel_predicted_sources_glm_transfer_pball_test_lakes.csv
-# data/RMSE_transfer_test_extended_glm.csv
-
-# from Drive (https://drive.google.com/drive/u/0/folders/101SMKO-sngbpF6au9DZebfJdLh8xBXr0)
-# data/PG-MTL_result_matrix_test_lakes_all_sources.csv
-# data/PG-MTL_result_matrix_test_lakes_single_sources.csv
-# data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv
-provided <- list(
-  good = c('120020376', '91593573', '91686475', '91688597', '91689681'), # good_outputs.zip
-  bad = c('120018495', '120020398', '45730856', '60087894', '82815984')) # bad_outputs.zip
-
-# From SB
-library(sbtools)
-sbtools::authenticate_sb('aappling@usgs.gov')
-eval_files <- sprintf('%s_evaluation.csv', c('pb0','pball','pbmtl','pgmtl','pgmtl9'))
-sbtools::item_file_download(
-  sb_id='5ebe577782ce476925e44b32',
-  names=eval_files,
-  destinations=sprintf('data/%s', eval_files),
-  overwrite_file = TRUE)
-sbtools::item_file_download(sb_id='5ebe564782ce476925e44b26', names='lake_metadata.csv', destinations='data/lake_metadata.csv', overwrite_file=TRUE)
-# also available: data/01_spatial/study_lakes.shp # don't need it [yet]
-lapply(unlist(provided), function(site_num) {
-  group <- lake_metadata %>%
-    filter(site_id == sprintf('nhdhr_%s', site_num)) %>%
-    pull(group_id)
-  zipfile <- sprintf('data/pb0_predictions_%s.zip', group)
-  if(!file.exists(zipfile)) {
-    sbtools::item_file_download(
-      sb_id='5ebe569582ce476925e44b2f',
-      names=basename(zipfile), destinations=zipfile)
-    if(!dir.exists('data/predictions')) dir.create('data/predictions')
-    unzip(zipfile, exdir='data/predictions')
-  }
-})
-
-#### Read ####
-
-# Define reader functions
-read_preds_feather <- function(preds_file) {
-  feather::read_feather(preds_file) %>%
-    pivot_longer(cols=starts_with('Depth_'), names_to='depth', names_prefix='Depth_', 
-                 names_transform=list(depth=as.numeric), values_to='temp_c') %>%
-    mutate(date=as.Date(index)) %>%
-    select(-index)
-}
-read_preds_csv <- function(preds_file) {
-  read_csv(preds_file, col_types=cols(.default=col_double(), date=col_date())) %>%
-    pivot_longer(cols=starts_with('temp_'), names_to='depth', names_prefix='temp_', 
-                 names_transform=list(depth=as.numeric), values_to='temp_c') 
-}
-
-# Read lake metadata
-lake_metadata_full <- readr::read_csv('data/source_metadata.csv')
-lake_metadata <- readr::read_csv('data/lake_metadata.csv')
-#lake_spatial <- sf::read_sf('data/01_spatial/study_lakes.shp') # don't need it [yet]
-
-# Read PB results from Jordan via Teams
-pball_mtl_305 <- read_csv('data/GLM_metamodel_predicted_sources_glm_transfer_pball_test_lakes.csv') %>%
-  transmute(target_id=sprintf('nhdhr_%s', `target_id(nhdhr)`),
-            source_id=sprintf('nhdhr_%s', `best_predicted_site_id (nhdhr)`),
-            predicted_rmse=predicted_rmse)
-pball_eval_44225 <- read_csv('data/RMSE_transfer_test_extended_glm.csv') %>%
-  mutate(target_id = gsub('test_', '', target_id))
-pball_eval_305 <- pball_eval_44225 %>%
-  right_join(pball_mtl_305, by=c('target_id','source_id'))
-
-# Read PGMTL results from Jared
-pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A')
-pgmtl_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv', na='N/A')
-pgmtl9_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv', na='N/A')
-jw_all_eval_305 <- readr::read_csv('data/305_lakes_results.csv') # includes predicted MTL and MLT9 RMSEs and lake metadata for those 305 lakes
-
-# Read results from ScienceBase
-pb0_eval_2364 <- read_csv('data/pb0_evaluation.csv')
-# pball_eval_145 <- read_csv('data/pball_evaluation.csv') # would rather have the 305 test lakes (best is from Teams for now)
-pbmtl_eval_305 <- read_csv('data/pbmtl_evaluation.csv')
-pgmtl_eval_2216 <- read_csv('data/pgmtl_evaluation.csv')
-pgmtl9_eval_2216 <- read_csv('data/pgmtl9_evaluation.csv')
-
-# Combine model eval results
-all_eval_305 <-  transmute(pb0_eval_2364, target_id=site_id, pb0_rmse=rmse) %>%
-  left_join(select(pgmtl_eval_2216, target_id=site_id, pgmtl_rmse=rmse), by='target_id') %>% #  pgmtl_source_id=source_id
-  left_join(select(pball_eval_305, target_id, pball_source_id=source_id, pball_rmse=rmse), by='target_id') %>% # Teams file for now
-  left_join(select(pgmtl9_eval_2216, target_id=site_id, pgmtl9_rmse=rmse), by='target_id') %>%
-  filter(!is.na(pball_rmse), !is.na(pgmtl_rmse))
-
-#### Identify data issues ####
-
-# Mismatch between 'rmse' columns in pgmtl_train_305 and pgmtl_eval_305. Jared
-# says he only used 1/3 of the test data for the train RMSEs and is fixing as of
-# 6/22
-pgmtl_train_305 %>%
-  select(target_id, source_id, all_sources_rmse = rmse) %>% 
-  left_join(select(pgmtl_eval_305, target_id, source_id, pgmtl_rmse = rmse)) %>%
-  filter(!is.na(pgmtl_rmse)) %>%
-  ggplot(aes(x=all_sources_rmse, y=pgmtl_rmse)) + geom_point() + theme_bw() +
-  xlab('all_sources rmse') + ylab('single_sources rmse')
-
-
-#### Select lakes ####
+#### Select Lakes ####
 
 # PG-MTL feature importances:
 # meta-feature	importance
@@ -118,7 +12,6 @@ pgmtl_train_305 %>%
 # Max Depth Percent Difference 	0.14737974
 # Surface Area Difference	0.12941339
 # Mean Obs Temp	0.08458307
-
 
 # Choose which sites to plot. Original idea was these three panels:
 # * good performance and good improvement over PB0
@@ -151,11 +44,11 @@ targets_in_context <- all_eval_305 %>%
       target_id %in% targets$target_id, 'selected',
       ifelse(target_id %in% sprintf('nhdhr_%s', unlist(provided)), 'available', 'unavailable')),
     marker_text = sprintf('%s\npgmtl9: %f\npgmtl: %f\npball: %f\npb0: %f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse))
-ggplot(targets_in_context, aes(x=pb0_rmse, y=pgmtl_rmse, color=status)) +
-  geom_point() + 
-  geom_point(data=filter(targets_in_context, status=='available')) +
-  geom_point(data=filter(targets_in_context, status=='selected')) +
-  scale_color_manual(values=c(selected='purple', available='seagreen', unavailable='lightgray')) +
+ggplot(targets_in_context, aes(x=pb0_rmse, y=pgmtl_rmse)) +
+  geom_point(data=filter(targets_in_context, status=='unavailable'), color='lightgray') + 
+  #geom_point(data=filter(targets_in_context, status=='available')) +
+  geom_point(data=filter(targets_in_context, status=='selected'), aes(color=target_id)) +
+  # scale_color_manual(values=c(selected='purple', available='seagreen', unavailable='lightgray')) +
   theme_bw()
 library(plotly)
 plot_ly(data = targets_in_context, x = ~pb0_rmse, y = ~pgmtl_rmse, text = ~marker_text) %>%
@@ -166,16 +59,29 @@ plot_ly(data = targets_in_context, x = ~pb0_rmse, y = ~pgmtl_rmse, text = ~marke
   add_trace(data=dplyr::filter(targets_in_context, status=='selected'),
             name = 'selected', type = 'scatter', mode = 'markers', marker = list(color='purple'))
 
-#### Plot
+#### Subset Data ####
 
-# date range for nhdhr_91688597: "2010-10-05" "2014-10-08" # should it be so limited?
-plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date='2013-12-31') {
+eg_targets_info <- jw_all_eval_305 %>%
+  filter(target_id %in% targets$target_id) %>%
+  select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
+#left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
+eg_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id) %>%
+  left_join(select(filter(lake_metadata, site_id %in% targets$target_id), site_id, target_name=lake_name), by=c('target_id'='site_id')) %>%
+  mutate(target_name = ifelse(!is.na(target_name), target_name, gsub('nhdhr_', '', target_id)))
+# note that some sources are used 2-3 times (dots will overlap)
+eg_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
+
+#### Timeseries Figure ####
+
+read_timeseries_data <- function(targets, target_num=3) {
   target <- targets[[target_num,'target_id']]
   target_class <- names(which(sapply(provided, function(.) any(grepl(gsub('nhdhr_', '', target), .)))))
   source_files <- dir(sprintf('data/%s_outputs/%s_outputs', target_class, target_class), pattern=sprintf('target_%s_.*source', target), full.names=TRUE)
   source_sites <- stringr::str_match(source_files, 'source_(nhdhr_[[:digit:]]+)_outputs.feather')[,2]
-  source_ranks <- filter(pgmtl9_eval_305, target_id == target, source_id %in% source_sites) %>% 
-    arrange(rmse) %>% # question for Jared: is this MTL-predicted or observed RMSE? what I'd really like right here is MTL-predicted
+  source_ranks <- pgmtl_train_305 %>%
+    filter(target_id == target) %>%
+    arrange(rmse_predicted) %>%
+    slice(1:9) %>%
     mutate(rank = 1:n()) %>%
     select(source_id, rmse, rank)
   sources <- purrr::map(setNames(source_files, nm=source_sites), function(source_file) {
@@ -190,62 +96,97 @@ plot_target_timeseries <- function(target_num=3, min_date='2012-01-01', max_date
   labels <- read_preds_feather(sprintf('data/%s_outputs/%s_outputs/target_%s_labels.feather', target_class, target_class, target)) %>%
     mutate(source='Observed')
   
-  common_depths <- labels %>%
+  bind_rows(sources, labels) %>%
+    mutate(target=target) %>%
+    return()
+}
+all_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
+  read_timeseries_data(targets, target_num)
+}) %>%
+  bind_rows()
+
+plot_all_target_data <- function(all_target_data, min_date='2012-01-01', max_date='2013-12-31') {
+  common_depths <- all_target_data %>%
+    filter(source == 'Observed') %>%
     filter(!is.na(temp_c), date >= as.Date(min_date), date <= as.Date(max_date)) %>%
-    group_by(depth) %>% 
+    group_by(target, depth) %>% 
     tally() %>%
     filter(n > 0.6*max(n)) %>%
     arrange(depth) %>%
     slice(c(1,n())) %>%
-    pull(depth)
-  plot_data <- bind_rows(sources, labels) %>% # pb0, ensemble
+    distinct() %>%
+    mutate(depth_class=c('shallow','deep')[1:n()]) %>%
+    select(target, depth, depth_class)
+  plot_data <- all_target_data %>%
     filter(!is.na(temp_c), date >= as.Date(min_date), date <= as.Date(max_date)) %>%
-    filter(depth %in% common_depths, is.na(rank) | rank %in% c(1,2,9)) %>%
+    right_join(common_depths, by=c('target','depth')) %>%
+    filter(is.na(rank) | rank %in% c(1,2,9)) %>%
     mutate(Model = ifelse(grepl('nhdhr', source), sprintf('Source %d', rank), source),
-           Depth = factor(depth))
-  
-  obs_color <- 'gray30'
-  ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=Depth, shape=Depth, fill=Depth)) +
+           DepthClass = ordered(depth_class, levels=c('shallow','deep'))) %>%
+    left_join(select(eg_targets_info, target_id, target_name), by=c('target'='target_id'))
+  ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=DepthClass, shape=DepthClass, fill=DepthClass)) +
     geom_line(data=filter(plot_data, source != 'Observed'), alpha=0.8) +
-    geom_point(data=filter(plot_data, source == 'Observed'), color=obs_color) +
-    scale_color_manual(values=c('Source 1'='#3014ea', 'Source 2'='#0086d6', 'Source 9'='#ffa22f')) + #https://www.color-hex.com/color-palette/67553
-    scale_shape_manual(values=setNames(c(25, 24), nm=factor(common_depths))) +
-    scale_fill_manual(values=setNames(c(obs_color,NA), nm=factor(common_depths))) +
+    geom_point(data=filter(plot_data, source == 'Observed'), color=model_colors['Obs']) +
+    scale_color_manual(values=c('Source 1'=pgmtl_colors[['central']], 'Source 2'=pgmtl9_colors[['dark']], 'Source 9'=map_colors[['extended_targets']])) + #https://www.color-hex.com/color-palette/67553
+    scale_shape_manual(values=setNames(c(25, 24), nm=levels(plot_data$DepthClass))) +
+    scale_fill_manual(values=setNames(c(model_colors['Obs'],NA), nm=levels(plot_data$DepthClass))) +
+    xlab('Date') +
+    ylab(expression(paste("Temperature (",degree,"C)"))) +
     theme_minimal() +
-    ggtitle(targets[target_num,] %>% mutate(label=sprintf('%s: PGMTL9 = %0.2f, PGMTL = %0.2f, PBall = %0.2f, PB0 = %0.2f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse)) %>% pull(label))
+    facet_grid(target_name ~ .) +
+    theme(legend.position='bottom')
+    #ggtitle(targets[target_num,] %>% mutate(label=sprintf('%s: PGMTL9 = %0.2f, PGMTL = %0.2f, PBall = %0.2f, PB0 = %0.2f', target_id, pgmtl9_rmse, pgmtl_rmse, pball_rmse, pb0_rmse)) %>% pull(label))
 }
+egplot_timeseries <- plot_all_target_data(all_target_data, min_date='2012-01-01', max_date='2013-12-31')
+egplot_timeseries
 
-library(cowplot)
-ts_plots <- lapply(seq_len(nrow(targets)), plot_target_timeseries, min_date='2012-01-01', max_date='2013-12-31')
-ts_grid <- cowplot::plot_grid(
-  plotlist=c(ts_plots),
-  nrow=4, ncol=1
+egplot_depth_area <- ggplot(eg_sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
+  geom_point(color='gray90') + 
+  geom_point(data=filter(eg_sources_info, top_9), aes(color=target_name, shape=target_name)) +
+  geom_point(data=eg_targets_info, aes(color=target_name), shape=19, size=3) +
+  scale_shape_manual('Target Lake', values=c(4,3,2,1)) +
+  scale_color_manual('Target Lake', values=example_colors) +
+  scale_size_continuous('Number of\nObservation Dates') +
+  scale_x_log10(labels=function(x) sprintf('%.0f', x)) +
+  # scale_y_log10() +
+  xlab('Surface Area (units?)') + ylab('Maximum Depth (m)') +
+  theme_bw() +
+  theme(
+    legend.position=c(0.15, 0.65),
+    legend.background=element_blank())
+    #legend.key.size=unit(10, units='points'),
+    #legend.title=element_text(size=unit(10, units='points')),
+    #legend.spacing.y=unit(5, units='points'))
+egplot_depth_area
+ggsave('figures/examples_depth_area.png', plot=egplot_depth_area, width=6, height=4)
+
+egplot_rmse_predobs <- eg_sources_info %>%
+  ggplot(aes(y=rmse_predicted, x=rmse, shape=target_name, fill=target_name,
+             color=rank_category, size=rank_category, alpha=rank_category)) +
+  geom_abline(color='lightgray') +
+  geom_point(data=filter(eg_sources_info, rank_predicted > 9)) +
+  geom_point(data=filter(eg_sources_info, rank_predicted <= 9, rank_predicted > 1)) +
+  geom_point(data=filter(eg_sources_info, rank_predicted == 1)) +
+  scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(sources_info$rank_category)) +
+  scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(sources_info$rank_category)) +
+  scale_color_manual(guide='none', values=c('black','white','white'), breaks=levels(sources_info$rank_category)) +
+  scale_shape_manual('Target Lake', values=c(24,23,22,21), guide='none') +
+  scale_fill_manual('Target Lake', values=example_colors, guide='none') +
+  scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = c(1, 21), ylim = c(1, 21)) +
+  xlab('Actual RMSE') + ylab('Predicted RMSE') +
+  theme_bw() + theme(legend.position=c(0.15,0.8), legend.background=element_blank())
+egplot_rmse_predobs
+ggsave('figures/examples_rmse_predobs.png', plot=egplot_rmse_predobs, width=6, height=4)
+
+library(gridExtra)
+examples_figure <- grid.arrange(
+  grobs = list(
+    egplot_timeseries,
+    egplot_depth_area,
+    egplot_rmse_predobs
+  ),
+  widths = c(1, 1),
+  layout_matrix = rbind(c(1, 2),
+                        c(1, 3))
 )
-cowplot::save_plot('figures/examples_timeseries.png', ts_grid, base_height=8, base_width=8)
-
-targets
-lake_metadata_full
-sources_info <- filter(pgmtl9_eval_305, target_id %in% targets$target_id) %>%
-  select(target_id, source_id, eval_rmse=rmse) %>% mutate(top_9=TRUE) %>%
-  filter(source_id != 'ENSEMBLE') %>%
-  full_join(select(pgmtl_train_305, target_id, source_id, rmse), by=c('target_id','source_id')) %>%
-  mutate(top_9=ifelse(is.na(top_9), FALSE, TRUE)) %>%
-  left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('source_id'='site_id'))
-# TODO: eval_rmse should equal rmse (when both are available) but does not
-targets_info <- jw_all_eval_305 %>%
-  filter(target_id %in% targets$target_id) %>%
-  select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
-  #left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
-
-# check that all sources are unique (no overlapping dots expected):
-sources_info %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
-
-ggplot(sources_info, aes(x=surface_area, y=max_depth, size=n_obs)) +
-  geom_point(data=filter(sources_info, target_id==target_id[1]), color='gray90') + 
-  geom_point(data=filter(sources_info, top_9), aes(color=target_id, shape=target_id)) +
-  geom_point(data=targets_info, aes(color=target_id), shape=19, size=3) +
-  scale_shape_manual(values=c(4,3,2,1)) +
-  scale_x_log10() +
-  scale_y_log10() +
-  theme_bw()
-ggsave('figures/examples_depth_area.png', width=6, height=4)
+cowplot::save_plot('figures/examples_figure.png', examples_figure, base_height=10, base_width=12)
