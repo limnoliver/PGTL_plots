@@ -13,8 +13,15 @@ library(tidyverse)
 # data/PG-MTL_result_matrix_test_lakes_all_sources.csv
 # data/PG-MTL_result_matrix_test_lakes_single_sources.csv
 # data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv
-# good_outputs.zip
-# bad_outputs.zip
+# data/good_outputs.zip
+# data/bad_outputs.zip
+
+# Manual download from Jared, new/updated on 7/6/20
+# data/PB-MTL_all_sources_with_predictions.csv
+# data/PG-MTL_result_matrix_test_lakes_single_sources.csv
+# data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv
+# data/PG-MTL9_305Lakes_PredictedRMSEStats_metadata.csv
+# data/mtl_outputs_for_fig.zip
 
 # Manual download from Jordan via Teams 6/19
 # data/GLM_metamodel_predicted_sources_glm_transfer_pball_test_lakes.csv
