@@ -30,8 +30,10 @@ filter(all_eval_305, target_id %in% sprintf('nhdhr_%s', unlist(provided))) %>%
 targets <- tribble(
   ~mtl_rmse_class, ~pb0_rmse_class, ~target_id,
   'good', 'bad', 'nhdhr_91688597', # good performance and good improvement over PB0. this is a good site choice
-  'good', 'good', 'nhdhr_120020398', # good performance but not much better than PB0. many sites have better performance for both models but are not yet available
-  'good', 'good', 'nhdhr_120018495', # good performance but worse performance than PB0
+  #'good', 'good', 'nhdhr_120020398', # good performance but not much better than PB0. many sites have better performance for both models but are not yet available
+  #'good', 'good', 'nhdhr_120018495', # good performance but worse performance than PB0
+  'bad', 'good', 'nhdhr_120018510',
+  'good', 'good', 'nhdhr_120020636',
   'bad', 'bad', 'nhdhr_82815984' # bad performance for both models
 ) %>% 
   left_join(all_eval_305, by='target_id') %>%
@@ -61,9 +63,9 @@ plot_ly(data = targets_in_context, x = ~pb0_rmse, y = ~pgmtl_rmse, text = ~marke
 
 #### Subset Data ####
 
-eg_targets_info <- jw_all_eval_305 %>%
+eg_targets_info <- pgmtl9_evalplus_305 %>%
   filter(target_id %in% targets$target_id) %>%
-  select(target_id, max_depth, surface_area, n_obs) #%>% using info from jw_all_eval_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
+  select(target_id, max_depth, surface_area, n_obs) #%>% using info from pgmtl9_evalplus_305 because lake_metadata lacks max_depth, etc., and lake_metadata_full lacks the target lakes
 #left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('target_id'='site_id'))
 eg_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id) %>%
   left_join(select(filter(lake_metadata, site_id %in% targets$target_id), site_id, target_name=lake_name), by=c('target_id'='site_id')) %>%
@@ -76,24 +78,25 @@ eg_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrang
 read_timeseries_data <- function(targets, target_num=3) {
   target <- targets[[target_num,'target_id']]
   target_class <- names(which(sapply(provided, function(.) any(grepl(gsub('nhdhr_', '', target), .)))))
-  source_files <- dir(sprintf('data/%s_outputs/%s_outputs', target_class, target_class), pattern=sprintf('target_%s_.*source', target), full.names=TRUE)
-  source_sites <- stringr::str_match(source_files, 'source_(nhdhr_[[:digit:]]+)_outputs.feather')[,2]
+  source_files <- dir(sprintf('data/mtl_outputs_for_fig/%s', target), pattern='source.*_nhdhr.*_output', full.names=TRUE)
   source_ranks <- pgmtl_train_305 %>%
     filter(target_id == target) %>%
     arrange(rmse_predicted) %>%
     slice(1:9) %>%
     mutate(rank = 1:n()) %>%
     select(source_id, rmse, rank)
-  sources <- purrr::map(setNames(source_files, nm=source_sites), function(source_file) {
-    read_preds_feather(source_file) %>% 
-      mutate(source=stringr::str_match(source_file, 'source_(nhdhr_[[:digit:]]+)_outputs.feather')[,2]) %>%
-      left_join(source_ranks, by=c('source'='source_id'))
+  sources <- purrr::map(source_files, function(source_file) {
+    source_site <- tibble(filename=source_file) %>%
+      tidyr::extract(filename, into=c('source_rank', 'source_id'), regex='source([[:digit:]]+)_(nhdhr[[:digit:]]+)_output', convert=TRUE) %>%
+      mutate(source_id = gsub('nhdhr', 'nhdhr_', source_id))
+    read_preds_mtl_outputs_for_fig(source_file) %>% 
+      mutate(
+        source_rank = source_site$source_rank,
+        source_id = source_site$source_id) %>%
+      left_join(source_ranks, by=c('source_id'))
   }) %>% bind_rows()
-  # ensemble <- read_preds_feather(sprintf('data/%s_outputs/%s_outputs/target_%s_ENSEMBLE_outputs.feather', target_class, target_class, target)) %>%
-  #   mutate(source='Ensemble', rank=0)
-  # pb0 <- read_preds_csv(sprintf('data/predictions/pb0_%s_temperatures.csv', target)) %>%
-  #   mutate(source='PB0')
-  labels <- read_preds_feather(sprintf('data/%s_outputs/%s_outputs/target_%s_labels.feather', target_class, target_class, target)) %>%
+  labels <- read_preds_mtl_outputs_for_fig(sprintf('data/mtl_outputs_for_fig/%s/labels', target)) %>%
+    filter(!is.na(temp_c)) %>%
     mutate(source='Observed')
   
   bind_rows(sources, labels) %>%

@@ -21,7 +21,7 @@ read_preds_csv <- function(preds_file) {
 # new format from Jared as of 7/6/20
 read_preds_mtl_outputs_for_fig <- function(preds_file) {
   feather::read_feather(preds_file) %>%
-    pivot_longer(cols=-index, names_to='date', names_transform=list(depth=as.Date), values_to='temp_c') %>%
+    pivot_longer(cols=-index, names_to='date', names_transform=list(date=as.Date), values_to='temp_c') %>%
     mutate(depth=as.numeric(index)) %>%
     select(-index)
 }
@@ -43,10 +43,19 @@ pball_eval_305 <- pball_eval_44225 %>%
 
 # Read PGMTL results from Jared
 pbmtl_train_305 <- readr::read_csv('data/PB-MTL_all_sources_with_predictions.csv', na='N/A') # new 7/6/20
-# pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A') # NOT updated 7/6/20
-pgmtl_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv', na='N/A') # updated 7/6/20
+
+# pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources_200714.csv', na='N/A') %>%
+#   rename(rmse_predicted=predicted_rmse); pgmtl_train_305_date <- '200714'
+# pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources_200622.csv', na='N/A'); pgmtl_train_305_date <- '200622'
+pgmtl_train_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources_200426.csv', na='N/A') %>%
+  mutate(rmse_predicted=NA); pgmtl_train_305_date <- '200426'
+
+pgmtl_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv', na='N/A') %>% # updated 7/6/20
+  slice(-n()) # This dangling RMSE value is the Sheets-computed median of all values above it
 pgmtl9_eval_305 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv', na='N/A') # updated 7/6/20
-pgmtl9_evalplus_305 <- readr::read_csv('data/PG-MTL9_305Lakes_PredictedRMSEStats_metadata.csv', na='N/A') # new 7/6/20
+# I think pgmtl9_evalplus_305 replaces jw_all_eval_305
+pgmtl9_evalplus_305 <- readr::read_csv('data/PG-MTL9_305Lakes_PredictedRMSEStats_metadata.csv', na='N/A') %>% # new 7/6/20
+  slice(-n()) # This dangling RMSE value is the Sheets-computed median of all values above it
 # jw_all_eval_305 <- readr::read_csv('data/305_lakes_results.csv') # NOT updated 7/6/20 # includes predicted MTL and MLT9 RMSEs and lake metadata for those 305 lakes
 
 # Read results from ScienceBase
