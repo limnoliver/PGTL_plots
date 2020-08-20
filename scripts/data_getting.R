@@ -23,10 +23,9 @@ library(tidyverse)
 # mtl_outputs9_Aug.zip -> data/mtl_outputs9/* # 305 feather files, one per target lake, with predictions from ensemble
 # data/mtl_outputs9exp_Aug.zip -> data/mtl_outputs_expanded/* # 2221 folders, each containing 3 feather files: labels, ensemble output, and top source output
 # source_pgdl_outputs.zip -> data/source_pgdl_outputs/* # 145 feather files, one per source lake
+provided <- dir('data/examples/mtl_outputs_for_fig') # use these as a guide for what to download from SB
 
 # Scripted downloads from SB
-lake_metadata <- readr::read_csv('data/lake_metadata.csv')
-provided <- c('82815984', '91688597', '120018510', '120020636') # updated 8/6/20
 library(sbtools)
 sbtools::authenticate_sb('aappling@usgs.gov')
 eval_files <- sprintf('%s_evaluation.csv', c('pb0','pball','pbmtl','pgmtl','pgmtl9'))
@@ -35,12 +34,20 @@ sbtools::item_file_download(
   names=eval_files,
   destinations=sprintf('data/%s', eval_files),
   overwrite_file = TRUE)
-sbtools::item_file_download(sb_id='5ebe564782ce476925e44b26', names='lake_metadata.csv', destinations='data/lake_metadata.csv', overwrite_file=TRUE)
+lake_files <- c('lake_metadata.csv', '01_spatial.zip')
+sbtools::item_file_download(
+  sb_id='5ebe564782ce476925e44b26',
+  names=lake_files,
+  destinations=sprintf('data/%s', lake_files),
+  overwrite_file=TRUE)
+lake_metadata <- readr::read_csv('data/lake_metadata.csv', col_types=cols())
 # also available: data/01_spatial/study_lakes.shp # don't need it [yet]
-lapply(unlist(provided), function(site_num) {
+lapply(provided, function(site_id) {
   group <- lake_metadata %>%
-    filter(site_id == sprintf('nhdhr_%s', site_num)) %>%
+    filter(site_id == !!site_id) %>%
     pull(group_id)
+  if(!dir.exists('data/zips')) dir.create('data/zips')
+  if(!dir.exists('data/predictions')) dir.create('data/predictions')
   for(model in c('pb0','pball','pgmtl','pgmtl9')) {
     zipfile <- sprintf('data/zips/%s_predictions_%s.zip', model, group)
     if(!file.exists(zipfile)) {
@@ -48,8 +55,10 @@ lapply(unlist(provided), function(site_num) {
       sbtools::item_file_download(
         sb_id='5ebe569582ce476925e44b2f',
         names=basename(zipfile), destinations=zipfile)
-      if(!dir.exists('data/predictions')) dir.create('data/predictions')
-      unzip(zipfile, exdir='data/predictions')
+    }
+    predfile <- sprintf('%s_%s_temperatures.csv', model, site_id)
+    if(!file.exists(predfile)) {
+      unzip(zipfile, files=predfile, exdir='data/predictions')
     }
   }
 })
