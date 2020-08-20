@@ -5,34 +5,28 @@ library(tidyverse)
 
 #### Get data ####
 
-# Manual download of single links shared by Jared:
-# data/source_metadata.csv from https://docs.google.com/spreadsheets/d/1DnPHR1f7YZnsZXusF9MWCiHdgRh6BmhXlJfwq2zm8u8/edit#gid=19987048
-# data/305_lakes_results.csv from https://docs.google.com/spreadsheets/d/1SK_0i8Qkpydn9ACb4AIfy7qWU6xUipWqOpzrFFpmWmM/edit?usp=sharing
-
-# Manual downloaded from Jared from Drive (https://drive.google.com/drive/u/0/folders/101SMKO-sngbpF6au9DZebfJdLh8xBXr0):
-# data/PG-MTL_result_matrix_test_lakes_all_sources.csv
-# data/PG-MTL_result_matrix_test_lakes_single_sources.csv
-# data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv
-# data/good_outputs.zip
-# data/bad_outputs.zip
-
-# Manual download from Jared, new/updated on 7/6/20
+# Manual download from Jared, new/updated on 8/6/20 on Drive (https://drive.google.com/drive/u/0/folders/101SMKO-sngbpF6au9DZebfJdLh8xBXr0),
+# to be replaced by ScienceBase release items soon:
 # data/PB-MTL_all_sources_with_predictions.csv
-# data/PG-MTL_result_matrix_test_lakes_single_sources.csv
+# data/PB-MTL_results.csv
+# data/PG-MTL_result_matrix_test_lakes_allsources.csv
 # data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv
+# data/PG-MTL_result_matrix_test_lakes_single_sources.csv
 # data/PG-MTL9_305Lakes_PredictedRMSEStats_metadata.csv
-# data/mtl_outputs_for_fig.zip
+# data/PG-MTL9_Expanded_2221Lakes_wMetadata.csv
 
-# Manual download from Jordan via Teams 6/19
-# data/GLM_metamodel_predicted_sources_glm_transfer_pball_test_lakes.csv
-# data/RMSE_transfer_test_extended_glm.csv
+# Manual download from Jared, new/updated on 8/3/20 on Drive (https://drive.google.com/drive/u/0/folders/101SMKO-sngbpF6au9DZebfJdLh8xBXr0),
+# to be used for examples plot (won't ever be on ScienceBase):
+# labels.zip -> data/labels/* # 305 feather files with observations in each target lake
+# mtl_outputs_for_fig_Aug.zip -> data/mtl_outputs_for_fig/* # 4 folders, one per example lake, with labels, ensemble output, and sources 0-8 and 95-99
+# mtl_outputs1_Aug.zip -> data/mtl_outputs1/* # (renamed) 305 feather files, one per target lake, with predictions from single top source
+# mtl_outputs9_Aug.zip -> data/mtl_outputs9/* # 305 feather files, one per target lake, with predictions from ensemble
+# data/mtl_outputs9exp_Aug.zip -> data/mtl_outputs_expanded/* # 2221 folders, each containing 3 feather files: labels, ensemble output, and top source output
+# source_pgdl_outputs.zip -> data/source_pgdl_outputs/* # 145 feather files, one per source lake
 
 # Scripted downloads from SB
-
 lake_metadata <- readr::read_csv('data/lake_metadata.csv')
-provided <- list(
-  good = c('120020376', '91593573', '91686475', '91688597', '91689681'), # good_outputs.zip
-  bad = c('120018495', '120020398', '45730856', '60087894', '82815984')) # bad_outputs.zip
+provided <- c('82815984', '91688597', '120018510', '120020636') # updated 8/6/20
 library(sbtools)
 sbtools::authenticate_sb('aappling@usgs.gov')
 eval_files <- sprintf('%s_evaluation.csv', c('pb0','pball','pbmtl','pgmtl','pgmtl9'))
@@ -48,7 +42,7 @@ lapply(unlist(provided), function(site_num) {
     filter(site_id == sprintf('nhdhr_%s', site_num)) %>%
     pull(group_id)
   for(model in c('pb0','pball','pgmtl','pgmtl9')) {
-    zipfile <- sprintf('data/%s_predictions_%s.zip', model, group)
+    zipfile <- sprintf('data/zips/%s_predictions_%s.zip', model, group)
     if(!file.exists(zipfile)) {
       message(sprintf('downloading %s', basename(zipfile)))
       sbtools::item_file_download(
