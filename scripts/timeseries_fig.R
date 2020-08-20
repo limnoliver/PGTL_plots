@@ -189,4 +189,4 @@ examples_figure <- grid.arrange(
   layout_matrix = rbind(c(1, 2),
                         c(1, 3))
 )
-cowplot::save_plot('figures/examples_figure.png', examples_figure, base_height=10, base_width=12)
+cowplot::save_plot('figures/examples_multipanel.png', examples_figure, base_height=10, base_width=12)

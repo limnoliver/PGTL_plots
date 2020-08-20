@@ -2,5 +2,18 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
+*/.DS_Store
 PGTL_plots.Rproj
 
+# data that we download from sciencebase
+data/01_spatial
+data/examples
+data/predictions
+data/zips
+data/lake_metadata.csv
+data/p*_evaluation.csv
+
+# leave room for local ad-hoc archives of older versions
+data/old
+figures/old
