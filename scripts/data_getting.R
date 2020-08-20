@@ -23,7 +23,7 @@ library(tidyverse)
 # mtl_outputs9_Aug.zip -> data/mtl_outputs9/* # 305 feather files, one per target lake, with predictions from ensemble
 # data/mtl_outputs9exp_Aug.zip -> data/mtl_outputs_expanded/* # 2221 folders, each containing 3 feather files: labels, ensemble output, and top source output
 # source_pgdl_outputs.zip -> data/source_pgdl_outputs/* # 145 feather files, one per source lake
-provided <- dir('data/examples/mtl_outputs_for_fig') # use these as a guide for what to download from SB
+example_sites <- dir('data/examples/mtl_outputs_for_fig') # use these as a guide for what to download from SB
 
 # Scripted downloads from SB
 library(sbtools)
@@ -42,7 +42,7 @@ sbtools::item_file_download(
   overwrite_file=TRUE)
 lake_metadata <- readr::read_csv('data/lake_metadata.csv', col_types=cols())
 # also available: data/01_spatial/study_lakes.shp # don't need it [yet]
-lapply(provided, function(site_id) {
+lapply(example_sites, function(site_id) {
   group <- lake_metadata %>%
     filter(site_id == !!site_id) %>%
     pull(group_id)
