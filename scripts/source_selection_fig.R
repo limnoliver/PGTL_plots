@@ -2,8 +2,18 @@ library(tidyverse)
 source('scripts/style.R')
 source('scripts/data_prep.R')
 
+#### Metamodel stats ####
+
+pgmtl_train_305_date
+median(sources_info$rmse)
+filter(sources_info, rank_predicted==1) %>% summarize(median(rank))
+filter(sources_info, rank_predicted<=9) %>% summarize(median(rank))
+beanplot_summary
+
 #### Metamodel figure ####
 
+# TODO: plot spearman rank coefficient for each target model in the rank plot, separate y axis?
+# one finding is that spearman ranks were worse for PBMTL than for PGMTL
 rankplot <- sources_info %>%
   ggplot(aes(x=site_rank_rmse_median, y=rmse, color=rank_category)) +# site_rank_rank_top_1, site_rank_rmse_median, median_rank_top_9, min_rank_top_9
   geom_point(data=filter(sources_info, rank_category == 'Not Top 9'), alpha=0.3, size=1) +
@@ -14,7 +24,7 @@ rankplot <- sources_info %>%
   xlab('Target sites ranked by median actual RMSE of top 9 source models') +
   ylab('Actual RMSE of source applied to target')
 rankplot
-ggsave('figures/metamodel_rankplot.png', rankplot, width=7, height=4)
+ggsave(sprintf('figures/metamodel_rankplot_%s.png', pgmtl_train_305_date), rankplot, width=7, height=4)
 # filter(sources_info, top_9) %>%
 #   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
 #   geom_point(alpha=0.8, color='#3a55b4') +
@@ -83,7 +93,7 @@ beanplot <- ggplot(beanplot_data, aes(x=rank_statistic_label)) +
   ylab('Actual rank of source model by RMSE') +
   theme_bw()
 beanplot
-ggsave('figures/metamodel_beanplot.png', beanplot, width=7, height=4)
+ggsave(sprintf('figures/metamodel_beanplot_%s.png', pgmtl_train_305_date), beanplot, width=7, height=4)
 # filter(sources_info, rank_predicted==1) %>%
 #   ggplot(aes(x='MLT-selected source', y=rank)) +
 #   geom_violin(color=NA, fill='darkgray') +
