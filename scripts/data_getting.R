@@ -23,7 +23,6 @@ library(tidyverse)
 # mtl_outputs9_Aug.zip -> data/mtl_outputs9/* # 305 feather files, one per target lake, with predictions from ensemble
 # data/mtl_outputs9exp_Aug.zip -> data/mtl_outputs_expanded/* # 2221 folders, each containing 3 feather files: labels, ensemble output, and top source output
 # source_pgdl_outputs.zip -> data/source_pgdl_outputs/* # 145 feather files, one per source lake
-example_sites <- dir('data/examples/mtl_outputs_for_fig') # use these as a guide for what to download from SB
 
 #### Scripted downloads from SB ####
 
@@ -41,27 +40,28 @@ sbtools::item_file_download(
 lake_metadata <- readr::read_csv('data/lake_metadata.csv', col_types=cols())
 unzip('data/zips/01_spatial.zip', exdir='data/spatial')
 
-# predictions for example sites
-if(!dir.exists('data/zips')) dir.create('data/zips')
-if(!dir.exists('data/predictions')) dir.create('data/predictions')
-lapply(example_sites, function(site_id) {
-  group <- lake_metadata %>%
-    filter(site_id == !!site_id) %>%
-    pull(group_id)
-  for(model in c('pb0','pball','pgmtl','pgmtl9')) {
-    zipfile <- sprintf('data/zips/%s_predictions_%s.zip', model, group)
-    if(!file.exists(zipfile)) {
-      message(sprintf('downloading %s', basename(zipfile)))
-      sbtools::item_file_download(
-        sb_id='5ebe569582ce476925e44b2f',
-        names=basename(zipfile), destinations=zipfile)
-    }
-    predfile <- sprintf('%s_%s_temperatures.csv', model, site_id)
-    if(!file.exists(predfile)) {
-      unzip(zipfile, files=predfile, exdir='data/predictions')
-    }
-  }
-})
+# predictions for example sites...but at the moment I'm not actually using these, and they take ~30 minutes to download
+# example_sites <- dir('data/examples/mtl_outputs_for_fig') # use these as a guide for what to download from SB
+# if(!dir.exists('data/zips')) dir.create('data/zips')
+# if(!dir.exists('data/predictions')) dir.create('data/predictions')
+# lapply(example_sites, function(site_id) {
+#   group <- lake_metadata %>%
+#     filter(site_id == !!site_id) %>%
+#     pull(group_id)
+#   for(model in c('pb0','pball','pgmtl','pgmtl9')) {
+#     zipfile <- sprintf('data/zips/%s_predictions_%s.zip', model, group)
+#     if(!file.exists(zipfile)) {
+#       message(sprintf('downloading %s', basename(zipfile)))
+#       sbtools::item_file_download(
+#         sb_id='5ebe569582ce476925e44b2f',
+#         names=basename(zipfile), destinations=zipfile)
+#     }
+#     predfile <- sprintf('%s_%s_temperatures.csv', model, site_id)
+#     if(!file.exists(predfile)) {
+#       unzip(zipfile, files=predfile, exdir='data/predictions')
+#     }
+#   }
+# })
 
 # evaluation files
 eval_files <- sprintf('%s_evaluation.csv', c('pb0','pball','pbmtl','pgmtl','pgmtl9'))

@@ -32,13 +32,16 @@ read_preds_mtl_outputs_for_fig <- function(preds_file) {
 lake_metadata <- readr::read_csv('data/lake_metadata.csv', col_types=cols())
 lake_spatial <- sf::read_sf('data/spatial/study_lakes.shp')
 # temporarily supplement with data from Drive; these columns should be in lake_metadata.csv in future. we also need the properties for source lakes, which are omitted from the 2221
-source_metadata <- read_csv('data/old/source_metadata.csv') %>% # we shouldn't have to use this file
-  select(site_id, fullname, max_depth, surface_area, n_obs)
+source_metadata <- read_csv('data/old/source_metadata.csv') # we shouldn't have to use this file
 lake_metadata_full <- read_csv('data/PG-MTL9_Expanded_2221Lakes_wMetadata.csv') %>%
   slice(-n()) %>% # some trailing line in the Sheet
   mutate(site_id = sprintf('nhdhr_%s', target_id)) %>%
-  select(site_id, fullname, max_depth, surface_area, n_obs) %>%
-  bind_rows(source_metadata)
+  bind_rows(source_metadata) %>%
+  select(site_id, fullname, max_depth, surface_area, n_obs, lathrop_strat, glm_strat_perc) %>%
+  mutate(
+    lathrop_strat=as.factor(lathrop_strat),
+    lathrop_recalc = (max_depth-0.1)/log10(surface_area/10000))
+# surface_area appears to be in m2, based on Wikipedia's statement that Lake Wingra is 1.3 km2 (which is 1300000 m2 == 130 ha)
 
 # Read PB results from Jordan via Teams
 # pball_mtl_305 <- read_csv('data/old/GLM_metamodel_predicted_sources_glm_transfer_pball_test_lakes.csv') %>%
