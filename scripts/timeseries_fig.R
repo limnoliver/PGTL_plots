@@ -121,14 +121,14 @@ plot_all_target_data <- function(all_target_data, min_date='2012-01-01', max_dat
   plot_data <- all_target_data %>%
     filter(!is.na(temp_c), date >= as.Date(min_date), date <= as.Date(max_date)) %>%
     right_join(common_depths, by=c('target_id','depth')) %>%
-    filter(is.na(rank) | rank %in% c(1,2,9)) %>%
+    filter(is.na(rank) | rank %in% c(1,9,99)) %>%
     mutate(Model = ifelse(grepl('nhdhr', source_id), sprintf('Source %d', rank), source_id),
            DepthClass = depth_class) %>%
     left_join(select(eg_targets_info, target_id, target_name), by=c('target_id'))
   ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=DepthClass, shape=DepthClass, fill=DepthClass)) +
     geom_line(data=filter(plot_data, source_id != 'Observed'), alpha=0.8) +
     geom_point(data=filter(plot_data, source_id == 'Observed'), color=model_colors['Obs']) +
-    scale_color_manual(values=c('Source 1'=pgmtl_colors[['central']], 'Source 2'=pgmtl9_colors[['dark']], 'Source 9'=map_colors[['extended_targets']])) + #https://www.color-hex.com/color-palette/67553
+    scale_color_manual(values=c('Source 1'=pgmtl_colors[['central']], 'Source 9'=pgmtl9_colors[['dark']], 'Source 99'=map_colors[['extended_targets']])) + #https://www.color-hex.com/color-palette/67553
     scale_shape_manual(values=setNames(c(25, 24), nm=levels(plot_data$DepthClass))) +
     scale_fill_manual(values=setNames(c(model_colors['Obs'],NA), nm=levels(plot_data$DepthClass))) +
     xlab('Date') +
