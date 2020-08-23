@@ -27,8 +27,8 @@ filter(all_eval_2366, site_id %in% example_sites) %>%
   arrange(pb0_rmse)
 targets <- tribble(
   ~mtl_rmse_class, ~pb0_rmse_class, ~target_id,
-  'good', 'good', 'nhdhr_120020636',
-  'bad', 'good', 'nhdhr_120018510', # PROBLEMATIC? they're about equal in performance now, actually, and both pretty good
+  # 'good', 'good', 'nhdhr_120020636', # weird reason to exclude, but it has too many observations so it's really hard to see the predictions
+  'good', 'good', 'nhdhr_120018510', # they're about equal in performance now, actually, and both pretty good
   'good', 'bad', 'nhdhr_91688597', # good performance and good improvement over PB0. this is a good site choice
   'bad', 'bad', 'nhdhr_82815984' # bad performance for both models
 ) %>% 
@@ -103,10 +103,11 @@ eg_targets_info <- lake_metadata_full %>%
   filter(site_id %in% targets$target_id) %>%
   mutate(
     site_num = gsub('nhdhr_', '', site_id),
-    full_name = case_when(fullname == 'None' ~ 'Unnamed', TRUE ~ fullname),
+    full_name = case_when(is.na(lake_name) ~ 'Unnamed', TRUE ~ lake_name),
     target_name = sprintf('%s (%s)', full_name, site_num)) %>%
   left_join(all_eval_2366, by='site_id') %>%
-  select(target_id=site_id, target_name, full_name, max_depth, surface_area, n_obs, lathrop_recalc, ends_with('rmse'))
+  select(target_id=site_id, target_name, full_name, max_depth, surface_area, n_obs, lathrop_recalc, ends_with('rmse')) %>%
+  arrange(target_name)
 eg_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id) %>%
   left_join(select(lake_metadata, site_id, target_name=lake_name), by=c('target_id'='site_id')) %>%
   mutate(
@@ -155,7 +156,7 @@ all_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
 }) %>%
   bind_rows()
 
-plot_all_target_data <- function(all_target_data, min_date='2012-01-01', max_date='2013-12-31') {
+plot_all_target_data <- function(all_target_data, min_date, max_date, legend_date) {
   common_depths <- all_target_data %>%
     filter(source_id == 'Observed') %>%
     filter(!is.na(temp_c), date >= as.Date(min_date), date <= as.Date(max_date)) %>%
@@ -177,41 +178,49 @@ plot_all_target_data <- function(all_target_data, min_date='2012-01-01', max_dat
     left_join(eg_targets_info, by=c('target_id'))
   plot_labels <- eg_targets_info %>%
     mutate(
-      date=as.Date('2013-01-15'), temp_c=22, depth_class='shallow', # for positioning on the plot
-      lab=sprintf('PB0: %0.1f\nPG-MTL: %0.1f\n%s', pb0_rmse, pgmtl_rmse, ifelse(lathrop_recalc > 3.8, 'stratified', 'unstratified')))
+      date=as.Date(legend_date), temp_c=22, depth_class='shallow', # for positioning on the plot
+      lab=sprintf('PB0: %0.1f C\nPG-MTL: %0.1f C', pb0_rmse, pgmtl_rmse))
+  panel_labels <- eg_targets_info %>%
+    mutate(
+      date=as.Date(min_date)+0.02*(as.Date(max_date)-as.Date(min_date)),
+      temp_c=35, depth_class='shallow', # for positioning on the plot
+      lab=letters[1:n()])
   ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=depth_class, shape=depth_class, fill=depth_class)) +
     geom_line(data=filter(plot_data, source_id != 'Observed'), alpha=0.8) +
     geom_point(data=filter(plot_data, source_id == 'Observed'), color=model_colors['Obs']) +
     geom_text(data=plot_labels, aes(label=lab), color='black', size=3) +
-    scale_color_manual(values=c('PB0'=model_colors[['PB0']], 'Source 1'=pgmtl_colors[['central']], 'Source 9'=pgmtl9_colors[['dark']], 'Source 99'=map_colors[['extended_targets']])) + #https://www.color-hex.com/color-palette/67553
-    scale_shape_manual(values=setNames(c(25, 24), nm=levels(plot_data$depth_class))) +
-    scale_fill_manual(values=setNames(c(model_colors['Obs'],NA), nm=levels(plot_data$depth_class))) +
-    xlab('Date') +
+    geom_text(data=panel_labels, aes(label=lab), color='black', size=5) +
+    scale_color_manual('', values=c('PB0'=model_colors[['PB0']], 'Source 1'=pgmtl_colors[['central']], 'Source 9'=pgmtl9_colors[['dark']], 'Source 99'=map_colors[['extended_targets']])) + #https://www.color-hex.com/color-palette/67553
+    scale_shape_manual('', values=setNames(c(25, 24), nm=levels(plot_data$depth_class))) +
+    scale_fill_manual('', values=setNames(c(model_colors['Obs'],NA), nm=levels(plot_data$depth_class))) +
+    scale_linetype_discrete('') +
+    xlab('') +
     ylab(expression(paste("Temperature (",degree,"C)"))) +
     theme_minimal() +
     facet_grid(target_name ~ .) +
-    theme(legend.position='bottom')
+    theme(axis.title.x=element_blank(), legend.position='bottom', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'))
 }
-egplot_timeseries <- plot_all_target_data(all_target_data, min_date='2012-01-01', max_date='2013-12-31')
+egplot_timeseries <- plot_all_target_data(all_target_data, min_date='2013-01-20', max_date='2014-01-19', legend_date='2013-12-10')
 egplot_timeseries
 
 egplot_depth_area <- ggplot(eg_sources_info, aes(x=surface_area/1000000, y=max_depth, size=n_obs)) +
   geom_point(color='gray90') + 
   geom_point(data=filter(eg_sources_info, top_9), aes(color=full_name, shape=full_name)) +
   geom_point(data=eg_targets_info, aes(color=full_name), shape=19, size=3) +
+  annotate('text', x = min(eg_sources_info$surface_area/1000000), y=0.96*max(eg_sources_info$max_depth), label='d', size=5) +
   scale_shape_manual('Target Lake', values=c(4,3,2,1)) +
   scale_color_manual('Target Lake', values=example_colors) +
-  scale_size_continuous('Number of\nObservation Dates') +
-  scale_x_log10(labels=function(x) sprintf('%.0f', x)) +
+  scale_size_continuous('# Obs. Dates') +
+  scale_x_log10(labels=function(x) sprintf('%.1g', x)) +
   # scale_y_log10() +
   xlab('Surface Area (km'^2~')') + ylab('Maximum Depth (m)') +
-  theme_bw() +
+  theme_minimal() +
   theme(
-    legend.position=c(0.15, 0.65),
-    legend.background=element_blank())
-    #legend.key.size=unit(10, units='points'),
+    legend.position=c(0.22, 0.73),
+    legend.background=element_blank(),
+    legend.key.size=unit(10, units='points'),
     #legend.title=element_text(size=unit(10, units='points')),
-    #legend.spacing.y=unit(5, units='points'))
+    legend.spacing.y=unit(5, units='points'))
 egplot_depth_area
 # ggsave('figures/examples_depth_area.png', plot=egplot_depth_area, width=6, height=4)
 
@@ -222,6 +231,7 @@ egplot_rmse_predobs <- eg_sources_info %>%
   geom_point(data=filter(eg_sources_info, rank_predicted > 9)) +
   geom_point(data=filter(eg_sources_info, rank_predicted <= 9, rank_predicted > 1)) +
   geom_point(data=filter(eg_sources_info, rank_predicted == 1)) +
+  annotate('text', x = 1.1, y = 21, label='e', size=5) +
   scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(sources_info$rank_category)) +
   scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(sources_info$rank_category)) +
   scale_color_manual(guide='none', values=c('black','white','white'), breaks=levels(sources_info$rank_category)) +
@@ -229,7 +239,7 @@ egplot_rmse_predobs <- eg_sources_info %>%
   scale_fill_manual('Target Lake', values=example_colors, guide='none') +
   scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = c(1, 21), ylim = c(1, 21)) +
   xlab('Actual RMSE') + ylab('Predicted RMSE') +
-  theme_bw() + theme(legend.position=c(0.15,0.8), legend.background=element_blank())
+  theme_minimal() + theme(legend.position=c(0.24,0.82), legend.background=element_blank(), legend.spacing.y=unit(3, units='points'))
 egplot_rmse_predobs
 # ggsave('figures/examples_rmse_predobs.png', plot=egplot_rmse_predobs, width=6, height=4)
 
@@ -244,4 +254,4 @@ examples_figure <- grid.arrange(
   layout_matrix = rbind(c(1, 2),
                         c(1, 3))
 )
-cowplot::save_plot('figures/examples_multipanel.png', examples_figure, base_height=10, base_width=12)
+cowplot::save_plot('figures/examples_multipanel.png', examples_figure, base_height=8, base_width=8)
