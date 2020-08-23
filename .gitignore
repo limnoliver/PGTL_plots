@@ -7,7 +7,7 @@
 PGTL_plots.Rproj
 
 # data that we download from sciencebase
-data/01_spatial
+data/spatial
 data/examples
 data/predictions
 data/zips
