@@ -32,12 +32,13 @@ read_preds_mtl_outputs_for_fig <- function(preds_file) {
 lake_metadata <- readr::read_csv('data/lake_metadata.csv', col_types=cols())
 lake_spatial <- sf::read_sf('data/spatial/study_lakes.shp')
 # temporarily supplement with data from Drive; these columns should be in lake_metadata.csv in future. we also need the properties for source lakes, which are omitted from the 2221
-source_metadata <- read_csv('data/old/source_metadata.csv') # we shouldn't have to use this file
-lake_metadata_full <- read_csv('data/PG-MTL9_Expanded_2221Lakes_wMetadata.csv') %>%
-  slice(-n()) %>% # some trailing line in the Sheet
-  mutate(site_id = sprintf('nhdhr_%s', target_id)) %>%
-  bind_rows(source_metadata) %>%
-  select(site_id, fullname, max_depth, surface_area, n_obs, lathrop_strat, glm_strat_perc) %>%
+# source_metadata <- read_csv('data/old/source_metadata.csv')
+# exp2221_metadata <- read_csv('data/PG-MTL9_Expanded_2221Lakes_wMetadata.csv') %>%
+#   slice(-n()) %>% # some trailing line in the Sheet
+#   mutate(site_id = sprintf('nhdhr_%s', target_id))
+# lake_metadata_full <- bind_rows(exp2221_metadata, source_metadata)
+lake_metadata_full <- lake_metadata %>%
+  select(site_id, lake_name, max_depth, surface_area, n_obs, lathrop_strat, glm_strat_perc) %>%
   mutate(
     lathrop_strat=as.factor(lathrop_strat),
     lathrop_recalc = (max_depth-0.1)/log10(surface_area/10000))
@@ -96,7 +97,7 @@ all_eval_2366 <- bind_rows(pb0_eval_2366, pball_eval_450, pbmtl_eval_305, pgmtl_
 
 # prepare info about the sources
 sources_info_partial <- select(pgmtl_train_44225, target_id, source_id, actual_rmse, predicted_rmse) %>%
-  left_join(select(lake_metadata_full, site_id, fullname, max_depth, surface_area, n_obs), by=c('source_id'='site_id')) %>%
+  left_join(select(lake_metadata_full, site_id, lake_name, max_depth, surface_area, n_obs), by=c('source_id'='site_id')) %>%
   group_by(target_id) %>%
   mutate(
     rank_actual = rank(actual_rmse),
