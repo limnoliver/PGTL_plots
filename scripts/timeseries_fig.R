@@ -103,19 +103,21 @@ eg_targets_info <- lake_metadata_full %>%
   filter(site_id %in% targets$target_id) %>%
   mutate(
     site_num = gsub('nhdhr_', '', site_id),
-    full_name = case_when(is.na(lake_name) ~ 'Unnamed', TRUE ~ lake_name),
-    target_name = sprintf('%s (%s)', full_name, site_num)) %>%
+    target_lake_name = case_when(is.na(lake_name) ~ 'Unnamed', TRUE ~ lake_name),
+    target_name = sprintf('%s (%s)', target_lake_name, site_num)) %>%
   left_join(all_eval_2366, by='site_id') %>%
-  select(target_id=site_id, target_name, full_name, max_depth, surface_area, n_obs, lathrop_recalc, ends_with('rmse')) %>%
+  select(target_id=site_id, target_name, target_lake_name, site_num, max_depth, surface_area, n_obs, lathrop_recalc, ends_with('rmse')) %>%
   arrange(target_name)
 eg_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id) %>%
-  left_join(select(lake_metadata, site_id, target_name=lake_name), by=c('target_id'='site_id')) %>%
+  left_join(select(lake_metadata_full, site_id, source_lathrop_recalc=lathrop_recalc), by=c('source_id'='site_id')) %>%
+  left_join(select(lake_metadata_full, site_id, target_name=lake_name), by=c('target_id'='site_id')) %>%
   mutate(
+    source_lathrop_strat = source_lathrop_recalc > 3.8,
     site_num = gsub('nhdhr_', '', target_id),
-    full_name = case_when(is.na(target_name) | target_name == 'None' ~ 'Unnamed', TRUE ~ target_name),
-    target_name = sprintf('%s (%s)', full_name, site_num))
+    target_lake_name = case_when(is.na(target_name) | target_name == 'None' ~ 'Unnamed', TRUE ~ target_name),
+    target_name = sprintf('%s (%s)', target_lake_name, site_num))
 # note that some sources are used 2-3 times (dots will overlap)
-eg_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
+#eg_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
 
 #### Timeseries Figure ####
 
@@ -156,7 +158,7 @@ all_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
 }) %>%
   bind_rows()
 
-plot_all_target_data <- function(all_target_data, min_date, max_date, legend_date) {
+plot_all_target_data <- function(all_target_data, min_date, max_date, lake_xdate, rmse_xdate) {
   common_depths <- all_target_data %>%
     filter(source_id == 'Observed') %>%
     filter(!is.na(temp_c), date >= as.Date(min_date), date <= as.Date(max_date)) %>%
@@ -176,20 +178,27 @@ plot_all_target_data <- function(all_target_data, min_date, max_date, legend_dat
     filter(is.na(rank) | rank %in% c(1,9,99)) %>%
     mutate(Model = ifelse(grepl('nhdhr', source_id), sprintf('Source %d', rank), source_id)) %>%
     left_join(eg_targets_info, by=c('target_id'))
-  plot_labels <- eg_targets_info %>%
+  lake_labels <- eg_targets_info %>%
     mutate(
-      date=as.Date(legend_date), temp_c=22, depth_class='shallow', # for positioning on the plot
+      date=as.Date(lake_xdate), temp_c=22, depth_class='shallow', # for positioning on the plot
+      lab=sprintf('%s\n(%s)', target_lake_name, site_num))
+  rmse_labels <- eg_targets_info %>%
+    mutate(
+      date=as.Date(rmse_xdate), temp_c=22, depth_class='shallow', # for positioning on the plot
       lab=sprintf('PB0: %0.1f C\nPG-MTL: %0.1f C', pb0_rmse, pgmtl_rmse))
-  panel_labels <- eg_targets_info %>%
+  panel_letters <- eg_targets_info %>%
     mutate(
       date=as.Date(min_date)+0.02*(as.Date(max_date)-as.Date(min_date)),
-      temp_c=35, depth_class='shallow', # for positioning on the plot
+      temp_c=36, depth_class='shallow', # for positioning on the plot
       lab=letters[1:n()])
   ggplot(plot_data, aes(x=date, y=temp_c, color=Model, linetype=depth_class, shape=depth_class, fill=depth_class)) +
     geom_line(data=filter(plot_data, source_id != 'Observed'), alpha=0.8) +
     geom_point(data=filter(plot_data, source_id == 'Observed'), color=model_colors['Obs']) +
-    geom_text(data=plot_labels, aes(label=lab), color='black', size=3) +
-    geom_text(data=panel_labels, aes(label=lab), color='black', size=5) +
+    geom_text(data=lake_labels[1,], aes(label=lab), color=example_colors[1], size=3) +
+    geom_text(data=lake_labels[2,], aes(label=lab), color=example_colors[2], size=3) +
+    geom_text(data=lake_labels[3,], aes(label=lab), color=example_colors[3], size=3) +
+    geom_text(data=rmse_labels, aes(label=lab), color='black', size=3) +
+    geom_text(data=panel_letters, aes(label=lab), color='black', size=5) +
     scale_color_manual('', values=c('PB0'=model_colors[['PB0']], 'Source 1'=pgmtl_colors[['central']], 'Source 9'=pgmtl9_colors[['dark']], 'Source 99'=map_colors[['extended_targets']])) + #https://www.color-hex.com/color-palette/67553
     scale_shape_manual('', values=setNames(c(25, 24), nm=levels(plot_data$depth_class))) +
     scale_fill_manual('', values=setNames(c(model_colors['Obs'],NA), nm=levels(plot_data$depth_class))) +
@@ -198,25 +207,31 @@ plot_all_target_data <- function(all_target_data, min_date, max_date, legend_dat
     ylab(expression(paste("Temperature (",degree,"C)"))) +
     theme_minimal() +
     facet_grid(target_name ~ .) +
-    theme(axis.title.x=element_blank(), legend.position='bottom', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'))
+    theme(
+      axis.title.x=element_blank(), 
+      strip.text.y=element_blank(),
+      legend.position='bottom', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'))
 }
-egplot_timeseries <- plot_all_target_data(all_target_data, min_date='2013-01-20', max_date='2014-01-19', legend_date='2013-12-10')
+egplot_timeseries <- plot_all_target_data(all_target_data, min_date='2013-02-01', max_date='2014-01-31', lake_xdate='2013-03-15', rmse_xdate='2013-12-15')
 egplot_timeseries
 
 egplot_depth_area <- ggplot(eg_sources_info, aes(x=surface_area/1000000, y=max_depth, size=n_obs)) +
-  geom_point(color='gray90') + 
-  geom_point(data=filter(eg_sources_info, top_9), aes(color=full_name, shape=full_name)) +
-  geom_point(data=eg_targets_info, aes(color=full_name), shape=19, size=3) +
-  annotate('text', x = min(eg_sources_info$surface_area/1000000), y=0.96*max(eg_sources_info$max_depth), label='d', size=5) +
-  scale_shape_manual('Target Lake', values=c(4,3,2,1)) +
+  geom_point(data=filter(eg_sources_info, source_lathrop_strat == 0), color=neutral_colors[['dark']], shape=20) +
+  geom_point(data=filter(eg_sources_info, source_lathrop_strat == 1), color=neutral_colors[['light']], shape=20) +
+  geom_point(data=eg_targets_info, aes(fill=target_name, color=target_name, shape=target_name), size=3) +
+  geom_point(data=filter(eg_sources_info, top_9), aes(color=target_name, shape=target_name)) +
+  annotate('text', x = min(eg_sources_info$surface_area/1000000), y=0.99*max(eg_sources_info$max_depth), label='d', size=5) +
+  scale_shape_manual('Target Lake', values=c(21, 22, 23)) +
   scale_color_manual('Target Lake', values=example_colors) +
+  scale_fill_manual('Target Lake', values=example_colors) +
+  #guides(shape = guide_legend(override.aes = list(color = neutral_colors[['light']]))) +
   scale_size_continuous('# Obs. Dates') +
-  scale_x_log10(labels=function(x) sprintf('%.1g', x)) +
+  scale_x_log10(labels=function(x) sprintf('%s', as.character(signif(x, 1)))) +
   # scale_y_log10() +
   xlab('Surface Area (km'^2~')') + ylab('Maximum Depth (m)') +
   theme_minimal() +
   theme(
-    legend.position=c(0.22, 0.73),
+    legend.position=c(0.32, 0.7),
     legend.background=element_blank(),
     legend.key.size=unit(10, units='points'),
     #legend.title=element_text(size=unit(10, units='points')),
@@ -231,7 +246,7 @@ egplot_rmse_predobs <- eg_sources_info %>%
   geom_point(data=filter(eg_sources_info, rank_predicted > 9)) +
   geom_point(data=filter(eg_sources_info, rank_predicted <= 9, rank_predicted > 1)) +
   geom_point(data=filter(eg_sources_info, rank_predicted == 1)) +
-  annotate('text', x = 1.1, y = 21, label='e', size=5) +
+  annotate('text', x = 1.1, y = 23, label='e', size=5) +
   scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(sources_info$rank_category)) +
   scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(sources_info$rank_category)) +
   scale_color_manual(guide='none', values=c('black','white','white'), breaks=levels(sources_info$rank_category)) +
