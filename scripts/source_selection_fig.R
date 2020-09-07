@@ -4,27 +4,32 @@ source('scripts/data_prep.R')
 
 #### Metamodel stats ####
 
-pgmtl_train_305_date
-median(sources_info$rmse)
-filter(sources_info, rank_predicted==1) %>% summarize(median(rank))
-filter(sources_info, rank_predicted<=9) %>% summarize(median(rank))
+median(sources_info$actual_rmse)
+sources_info %>% select(target_id, rank_top_1) %>% distinct() %>% summarize(median(rank_top_1))
+filter(sources_info, rank_predicted==1) %>% summarize(median(rank_actual))
+sources_info %>% select(target_id, median_rank_top_9) %>% distinct() %>% summarize(median(median_rank_top_9))
+filter(sources_info, rank_predicted<=9) %>% summarize(median(rank_actual))
 beanplot_summary
 
 #### Metamodel figure ####
 
 # TODO: plot spearman rank coefficient for each target model in the rank plot, separate y axis?
 # one finding is that spearman ranks were worse for PBMTL than for PGMTL
-rankplot <- sources_info %>%
-  ggplot(aes(x=site_rank_rmse_median, y=rmse, color=rank_category)) +# site_rank_rank_top_1, site_rank_rmse_median, median_rank_top_9, min_rank_top_9
-  geom_point(data=filter(sources_info, rank_category == 'Not Top 9'), alpha=0.3, size=1) +
-  geom_point(data=filter(sources_info, rank_category == 'Top 9'), alpha=0.5, size=1) +
-  geom_point(data=filter(sources_info, rank_category == 'Top 1'), size=1) +
-  scale_color_manual('Metamodel\nprediction', breaks=c('Not Top 9', 'Top 9', 'Top 1'), values=c('Top 1'=model_colors[['PG-MTL']], 'Top 9'=model_colors[['PG-MTL9']], 'Not Top 9'=neutral_colors[['light']])) +
-  theme_bw() +
-  xlab('Target sites ranked by median actual RMSE of top 9 source models') +
-  ylab('Actual RMSE of source applied to target')
-rankplot
-ggsave(sprintf('figures/metamodel_rankplot_%s.png', pgmtl_train_305_date), rankplot, width=7, height=4)
+plot_rankplot <- function(sources_info, model_type=c('PB','PG')) {
+  # c(PB='Process-based', PG='Process-guided')[model_type]
+  rankplot <- sources_info %>%
+    ggplot(aes(x=site_rank_rmse_median, y=actual_rmse, color=rank_category)) +# site_rank_rank_top_1, site_rank_rmse_median, median_rank_top_9, min_rank_top_9
+    geom_point(data=filter(sources_info, rank_category == 'Not Top 9'), alpha=0.3, size=1) +
+    geom_point(data=filter(sources_info, rank_category == 'Top 9'), alpha=0.5, size=1) +
+    geom_point(data=filter(sources_info, rank_category == 'Top 1'), size=1) +
+    scale_color_manual(sprintf('Metamodel\nprediction'), breaks=c('Not Top 9', 'Top 9', 'Top 1'), values=c('Top 1'=model_colors[['PG-MTL']], 'Top 9'=model_colors[['PG-MTL9']], 'Not Top 9'=neutral_colors[['light']])) +
+    theme_bw() +
+    xlab(sprintf('Target sites ranked by median actual RMSE of top 9 %s source models', model_type)) +
+    ylab(sprintf('Actual RMSE of %s source applied to target', model_type))
+  rankplot
+  ggsave(sprintf('figures/metamodel_rankplot_%s.png', model_type), rankplot, width=7, height=4)
+}
+plot_rankplot(sources_info, model_type='PG')
 # filter(sources_info, top_9) %>%
 #   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
 #   geom_point(alpha=0.8, color='#3a55b4') +
@@ -51,49 +56,54 @@ ggsave(sprintf('figures/metamodel_rankplot_%s.png', pgmtl_train_305_date), rankp
 #   ylab('Actual rank of the source predicted to be rank 1') +
 #   theme_bw()
 
-beanplot_data <- target_summary %>%
-  select(rank_top_1, min_rank_top_9, max_rank_top_9, median_rank_top_9) %>%
-  pivot_longer(cols=everything(), names_to='rank_statistic', values_to='rank') %>%
-  mutate(rank_statistic_label = c(
-    'rank_top_1'='Predicted best',
-    'min_rank_top_9'='Actual best\nof 9 predicted best',
-    'median_rank_top_9'='Actual median\nof 9 predicted best',
-    'max_rank_top_9'='Actual worst\nof 9 predicted best'
-  )[rank_statistic] %>% ordered())
-beanplot_summary <- beanplot_data %>%
-  group_by(rank_statistic_label) %>%
-  summarize(
-    q25=quantile(rank, 0.25),
-    q50=quantile(rank, 0.50),
-    q75=quantile(rank, 0.75)) %>%
-  pivot_longer(cols=starts_with('q'), names_to='quantile', names_prefix='q', values_to='rank') %>%
-  mutate(hline_x=as.numeric(rank_statistic_label))
-beanplot <- ggplot(beanplot_data, aes(x=rank_statistic_label)) +
-  geom_violin(aes(y=rank, fill=rank_statistic), color=NA, trim=FALSE, scale='area') +
-  scale_fill_manual(
-    guide='none',
-    values=c(rank_top_1=pgmtl_colors[['central']], min_rank_top_9=pgmtl9_colors[['dark']],
-             median_rank_top_9=pgmtl9_colors[['central']], max_rank_top_9=pgmtl9_colors[['light']])) +
-  geom_errorbarh(
-    data=filter(beanplot_summary, quantile == '50'),
-    aes(xmin=hline_x-0.1, xmax=hline_x+0.1, y=rank),
-    size=0.8, height=0, color='gray80') +
-  geom_errorbarh(
-    data=filter(beanplot_summary, quantile != '50'),
-    aes(xmin=hline_x-0.03, xmax=hline_x+0.03, y=rank),
-    size=0.8, height=0, color='gray80') +
-  # scale_x_discrete(values=c(
-  #   "Predicted best"=1,
-  #   "Actual best\nof 9 predicted best"=2,
-  #   "Actual median\nof 9 predicted best"=3,
-  #   "Actual worst\nof 9 predicted best"=3.5,
-  # )) +
-  ylim(0,145) +
-  xlab('Source model') +
-  ylab('Actual rank of source model by RMSE') +
-  theme_bw()
-beanplot
-ggsave(sprintf('figures/metamodel_beanplot_%s.png', pgmtl_train_305_date), beanplot, width=7, height=4)
+plot_beanplot <- function(target_summary, model_type='PG') {
+  beanplot_data <- target_summary %>%
+    select(rank_top_1, min_rank_top_9, max_rank_top_9, median_rank_top_9) %>%
+    pivot_longer(cols=everything(), names_to='rank_statistic', values_to='rank') %>%
+    mutate(rank_statistic_label = c(
+      'rank_top_1'='Predicted best',
+      'min_rank_top_9'='Actual best\nof 9 predicted best',
+      'median_rank_top_9'='Actual median\nof 9 predicted best',
+      'max_rank_top_9'='Actual worst\nof 9 predicted best'
+    )[rank_statistic] %>% ordered())
+  beanplot_summary <- beanplot_data %>%
+    group_by(rank_statistic_label) %>%
+    summarize(
+      q25=quantile(rank, 0.25),
+      q50=quantile(rank, 0.50),
+      q75=quantile(rank, 0.75),
+      .groups='drop') %>%
+    pivot_longer(cols=starts_with('q'), names_to='quantile', names_prefix='q', values_to='rank') %>%
+    mutate(hline_x=as.numeric(rank_statistic_label))
+  beanplot <- ggplot(beanplot_data, aes(x=rank_statistic_label)) +
+    geom_violin(aes(y=rank, fill=rank_statistic), color=NA, trim=FALSE, scale='area') +
+    scale_fill_manual(
+      guide='none',
+      values=c(rank_top_1=pgmtl_colors[['central']], min_rank_top_9=pgmtl9_colors[['dark']],
+               median_rank_top_9=pgmtl9_colors[['central']], max_rank_top_9=pgmtl9_colors[['light']])) +
+    geom_errorbarh(
+      data=filter(beanplot_summary, quantile == '50'),
+      aes(xmin=hline_x-0.1, xmax=hline_x+0.1, y=rank),
+      size=0.8, height=0, color='gray80') +
+    geom_errorbarh(
+      data=filter(beanplot_summary, quantile != '50'),
+      aes(xmin=hline_x-0.03, xmax=hline_x+0.03, y=rank),
+      size=0.8, height=0, color='gray80') +
+    # scale_x_discrete(values=c(
+    #   "Predicted best"=1,
+    #   "Actual best\nof 9 predicted best"=2,
+    #   "Actual median\nof 9 predicted best"=3,
+    #   "Actual worst\nof 9 predicted best"=3.5,
+    # )) +
+    ylim(0,145) +
+    xlab(sprintf('%s source model', model_type)) +
+    ylab(sprintf('Actual rank of %s source model by RMSE', model_type)) +
+    theme_bw()
+  beanplot
+  ggsave(sprintf('figures/metamodel_beanplot_%s.png', model_type), beanplot, width=7, height=4)
+}
+plot_beanplot(target_summary, model_type='PG')
+
 # filter(sources_info, rank_predicted==1) %>%
 #   ggplot(aes(x='MLT-selected source', y=rank)) +
 #   geom_violin(color=NA, fill='darkgray') +
