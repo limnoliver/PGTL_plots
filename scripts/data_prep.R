@@ -60,7 +60,7 @@ lake_metadata_full <- lake_metadata %>%
 pbmtl_train_44225 <- readr::read_csv('data/PB-MTL_all_sources_with_predictions.csv', na='N/A') %>% # 44k source-target pairs, predicted and actual rmses
   rename(actual_rmse = transfer_rmse)
 pgmtl_train_44225 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A') %>% # junk (NAs) in columns 13 and 14
-  select(target_id, source_id, actual_rmse = rmse, predicted_rmse) # includes metafeatures, but I'm taking them out because they should be computable from lake_metadata_full and eventually lake_metadata
+  select(target_id, source_id, actual_rmse = `pg-mtl_rmse`, predicted_rmse) # includes metafeatures, but I'm taking them out because they should be computable from lake_metadata_full and eventually lake_metadata
 
 # More results from Jared
 # I think we don't actually need these files because pred+obs RMSEs are in the pxmtl_train_44225 files and metafeatures are in lake_metadata_full.
@@ -76,11 +76,11 @@ pgmtl_train_44225 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_s
 #   slice(-(n() + (-2:0))) %>% # This dangling RMSE value is the Sheets-computed median of all values above it
 
 # Read evaluation results from ScienceBase
-pb0_eval_2366 <- read_csv('data/pb0_evaluation.csv') %>% mutate(model = 'pb0') # 1916 + 305 + 145
-pball_eval_450 <- read_csv('data/pball_evaluation.csv') %>% mutate(model = 'pball') # 305 + 145
-pbmtl_eval_305 <- read_csv('data/pbmtl_evaluation.csv') %>% mutate(model = 'pbmtl') # 305
-pgmtl_eval_2221 <- read_csv('data/pgmtl_evaluation.csv') %>% mutate(model = 'pgmtl') # 1916 + 305
-pgmtl9_eval_2221 <- read_csv('data/pgmtl9_evaluation.csv') %>% mutate(model = 'pgmtl9') # 1916 + 305
+pb0_eval_2366 <- read_csv('data/pb0_evaluation.csv', col_types=cols()) %>% mutate(model = 'pb0') # 1916 + 305 + 145
+pball_eval_450 <- read_csv('data/pball_evaluation.csv', col_types=cols()) %>% mutate(model = 'pball') # 305 + 145
+pbmtl_eval_305 <- read_csv('data/pbmtl_evaluation.csv', col_types=cols()) %>% mutate(model = 'pbmtl') # 305
+pgmtl_eval_2221 <- read_csv('data/pgmtl_evaluation.csv', col_types=cols()) %>% mutate(model = 'pgmtl') # 1916 + 305
+pgmtl9_eval_2221 <- read_csv('data/pgmtl9_evaluation.csv', col_types=cols()) %>% mutate(model = 'pgmtl9') # 1916 + 305
 
 
 #### Munge ####

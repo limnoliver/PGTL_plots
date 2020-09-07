@@ -27,8 +27,8 @@ filter(all_eval_2366, site_id %in% example_sites) %>%
   arrange(pb0_rmse)
 targets <- tribble(
   ~mtl_rmse_class, ~pb0_rmse_class, ~target_id,
-  # 'good', 'good', 'nhdhr_120020636', # weird reason to exclude, but it has too many observations so it's really hard to see the predictions
-  'good', 'good', 'nhdhr_120018510', # they're about equal in performance now, actually, and both pretty good
+  #'good', 'good', 'nhdhr_120020636', # weird reason to exclude, but it has too many observations so it's really hard to see the predictions
+  'bad', 'good', 'nhdhr_120018510', # as of aug 20 they were about equal in performance and both pretty good. as of sept 5 it's pgmtl=2.84, pb0=1.88
   'good', 'bad', 'nhdhr_91688597', # good performance and good improvement over PB0. this is a good site choice
   'bad', 'bad', 'nhdhr_82815984' # bad performance for both models
 ) %>% 
@@ -215,26 +215,25 @@ plot_all_target_data <- function(all_target_data, min_date, max_date, lake_xdate
 egplot_timeseries <- plot_all_target_data(all_target_data, min_date='2013-02-01', max_date='2014-01-31', lake_xdate='2013-03-15', rmse_xdate='2013-12-15')
 egplot_timeseries
 
-egplot_depth_area <- ggplot(eg_sources_info, aes(x=surface_area/1000000, y=max_depth, size=n_obs)) +
-  geom_point(data=filter(eg_sources_info, source_lathrop_strat == 0), color=neutral_colors[['dark']], shape=20) +
-  geom_point(data=filter(eg_sources_info, source_lathrop_strat == 1), color=neutral_colors[['light']], shape=20) +
-  geom_point(data=eg_targets_info, aes(fill=target_name, color=target_name, shape=target_name), size=3) +
-  geom_point(data=filter(eg_sources_info, top_9), aes(color=target_name, shape=target_name)) +
+egplot_depth_area <- ggplot(eg_sources_info, aes(x=surface_area/1000000, y=max_depth)) +
+  geom_point(data=filter(eg_sources_info, source_lathrop_strat == 0), aes(size=n_obs), color=neutral_colors[['dark']], shape=20) +
+  geom_point(data=filter(eg_sources_info, source_lathrop_strat == 1), aes(size=n_obs), color=neutral_colors[['light']], shape=20) +
+  geom_point(data=eg_targets_info, aes(fill=target_name, shape=target_name), size=3, color='black') + # color=pgmtl_colors[['central']]
+  geom_point(data=filter(eg_sources_info, top_9), aes(fill=target_name, shape=target_name), size=2, color='none') + # color=pgmtl9_colors[['dark']]
   annotate('text', x = min(eg_sources_info$surface_area/1000000), y=0.99*max(eg_sources_info$max_depth), label='d', size=5) +
-  scale_shape_manual('Target Lake', values=c(21, 22, 23)) +
-  scale_color_manual('Target Lake', values=example_colors) +
-  scale_fill_manual('Target Lake', values=example_colors) +
-  #guides(shape = guide_legend(override.aes = list(color = neutral_colors[['light']]))) +
-  scale_size_continuous('# Obs. Dates') +
+  scale_shape_manual('Target Lake', values=c(24,23,22,21)[1:nrow(targets)]) + #21
+  scale_color_manual('Target Lake', values=example_colors[1:nrow(targets)]) +
+  scale_fill_manual('Target Lake', values=example_colors[1:nrow(targets)]) +
+  guides(size = guide_legend(override.aes = list(color = neutral_colors[['light']]))) +
+  scale_size_continuous('# Obs. Dates', breaks=c(5000,50000)) +
   scale_x_log10(labels=function(x) sprintf('%s', as.character(signif(x, 1)))) +
-  # scale_y_log10() +
   xlab('Surface Area (km'^2~')') + ylab('Maximum Depth (m)') +
   theme_minimal() +
   theme(
     legend.position=c(0.32, 0.7),
     legend.background=element_blank(),
     legend.key.size=unit(10, units='points'),
-    #legend.title=element_text(size=unit(10, units='points')),
+    legend.title=element_text(size=unit(10, units='points')),
     legend.spacing.y=unit(5, units='points'))
 egplot_depth_area
 # ggsave('figures/examples_depth_area.png', plot=egplot_depth_area, width=6, height=4)
@@ -249,12 +248,19 @@ egplot_rmse_predobs <- eg_sources_info %>%
   annotate('text', x = 1.1, y = 23, label='e', size=5) +
   scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(sources_info$rank_category)) +
   scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(sources_info$rank_category)) +
-  scale_color_manual(guide='none', values=c('black','white','white'), breaks=levels(sources_info$rank_category)) +
-  scale_shape_manual('Target Lake', values=c(24,23,22,21), guide='none') +
-  scale_fill_manual('Target Lake', values=example_colors, guide='none') +
+  scale_color_manual('Metamodel\nPrediction', values=c('black','none','white'), breaks=levels(sources_info$rank_category)) +
+  #scale_color_manual('Metamodel\nPrediction', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']],'none'), breaks=levels(sources_info$rank_category)) +
+  scale_shape_manual('Target Lake', values=c(24,23,22,21)[1:nrow(targets)], guide='none') +
+  scale_fill_manual('Target Lake', values=example_colors[1:nrow(targets)], guide='none') +
   scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = c(1, 21), ylim = c(1, 21)) +
+  guides(size = guide_legend(override.aes = list(shape=21, fill = neutral_colors[['light']]))) +
   xlab('Actual RMSE') + ylab('Predicted RMSE') +
-  theme_minimal() + theme(legend.position=c(0.24,0.82), legend.background=element_blank(), legend.spacing.y=unit(3, units='points'))
+  theme_minimal() + 
+  theme(
+    legend.position=c(0.24,0.82),
+    legend.background=element_blank(),
+    legend.title=element_text(size=unit(10, units='points')),
+    legend.spacing.y=unit(3, units='points'))
 egplot_rmse_predobs
 # ggsave('figures/examples_rmse_predobs.png', plot=egplot_rmse_predobs, width=6, height=4)
 
