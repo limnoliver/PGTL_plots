@@ -108,7 +108,7 @@ eg_targets_info <- lake_metadata_full %>%
   left_join(all_eval_2366, by='site_id') %>%
   select(target_id=site_id, target_name, target_lake_name, site_num, max_depth, surface_area, n_obs, lathrop_recalc, ends_with('rmse')) %>%
   arrange(target_name)
-eg_sources_info <- filter(sources_info_partial, target_id %in% targets$target_id) %>%
+eg_sources_info <- filter(pgmtl_info$sources_info, target_id %in% targets$target_id) %>%
   left_join(select(lake_metadata_full, site_id, source_lathrop_recalc=lathrop_recalc), by=c('source_id'='site_id')) %>%
   left_join(select(lake_metadata_full, site_id, target_name=lake_name), by=c('target_id'='site_id')) %>%
   mutate(
@@ -246,10 +246,10 @@ egplot_rmse_predobs <- eg_sources_info %>%
   geom_point(data=filter(eg_sources_info, rank_predicted <= 9, rank_predicted > 1)) +
   geom_point(data=filter(eg_sources_info, rank_predicted == 1)) +
   annotate('text', x = 1.1, y = 23, label='e', size=5) +
-  scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(sources_info$rank_category)) +
-  scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(sources_info$rank_category)) +
-  scale_color_manual('Metamodel\nPrediction', values=c('black','none','white'), breaks=levels(sources_info$rank_category)) +
-  #scale_color_manual('Metamodel\nPrediction', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']],'none'), breaks=levels(sources_info$rank_category)) +
+  scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(pgmtl_info$sources_info$rank_category)) +
+  scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(pgmtl_info$sources_info$rank_category)) +
+  scale_color_manual('Metamodel\nPrediction', values=c('black','none','white'), breaks=levels(pgmtl_info$sources_info$rank_category)) +
+  #scale_color_manual('Metamodel\nPrediction', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']],'none'), breaks=levels(pgmtl_info$sources_info$rank_category)) +
   scale_shape_manual('Target Lake', values=c(24,23,22,21)[1:nrow(targets)], guide='none') +
   scale_fill_manual('Target Lake', values=example_colors[1:nrow(targets)], guide='none') +
   scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = c(1, 21), ylim = c(1, 21)) +
