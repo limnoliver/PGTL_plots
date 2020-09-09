@@ -2,15 +2,6 @@ library(tidyverse)
 source('scripts/style.R')
 source('scripts/data_prep.R')
 
-#### Metamodel stats ####
-
-median(sources_info$actual_rmse)
-sources_info %>% select(target_id, rank_top_1) %>% distinct() %>% summarize(median(rank_top_1))
-filter(sources_info, rank_predicted==1) %>% summarize(median(rank_actual))
-sources_info %>% select(target_id, median_rank_top_9) %>% distinct() %>% summarize(median(median_rank_top_9))
-filter(sources_info, rank_predicted<=9) %>% summarize(median(rank_actual))
-beanplot_summary
-
 #### Metamodel figure ####
 
 # TODO: plot spearman rank coefficient for each target model in the rank plot, separate y axis?
@@ -29,7 +20,15 @@ plot_rankplot <- function(sources_info, model_type=c('PB','PG')) {
   rankplot
   ggsave(sprintf('figures/metamodel_rankplot_%s.png', model_type), rankplot, width=7, height=4)
 }
-plot_rankplot(sources_info, model_type='PG')
+plot_rankplot(pgmtl_info$sources_info, model_type='PG')
+# filter(pbmtl_info$sources_info, actual_rmse <= 0 | is.na(actual_rmse)) %>% select(target_id, source_id, actual_rmse)
+# A tibble: 2 x 3
+#   target_id                                    source_id       actual_rmse
+#   <chr>                                        <chr>                 <dbl>
+# 1 nhdhr_155442361                              nhdhr_143396594         NaN
+# 2 nhdhr_{62B48949-8CCC-4BA3-989E-AA1FE86C363D} nhdhr_120020373        -999
+plot_rankplot(filter(pbmtl_info$sources_info, actual_rmse > 0), model_type='PB')
+
 # filter(sources_info, top_9) %>%
 #   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
 #   geom_point(alpha=0.8, color='#3a55b4') +
@@ -95,14 +94,15 @@ plot_beanplot <- function(target_summary, model_type='PG') {
     #   "Actual median\nof 9 predicted best"=3,
     #   "Actual worst\nof 9 predicted best"=3.5,
     # )) +
-    ylim(0,145) +
+    coord_cartesian(ylim=c(0,145)) + ylim(0, NA) +
     xlab(sprintf('%s source model', model_type)) +
     ylab(sprintf('Actual rank of %s source model by RMSE', model_type)) +
     theme_bw()
   beanplot
   ggsave(sprintf('figures/metamodel_beanplot_%s.png', model_type), beanplot, width=7, height=4)
 }
-plot_beanplot(target_summary, model_type='PG')
+plot_beanplot(pgmtl_info$target_summary, model_type='PG')
+plot_beanplot(pbmtl_info$target_summary, model_type='PB')
 
 # filter(sources_info, rank_predicted==1) %>%
 #   ggplot(aes(x='MLT-selected source', y=rank)) +
@@ -111,11 +111,10 @@ plot_beanplot(target_summary, model_type='PG')
 #   ylab('Actual rank of the source predicted to be rank 1') +
 #   ylim(0,145) +
 #   theme_bw()
-filter(sources_info, rank_predicted==1) %>% summarize(median(rank))
-filter(sources_info, rank_predicted<=9) %>% summarize(median(rank))
+# filter(pgmtl_info$sources_info, rank_predicted==1) %>% summarize(median(rank_actual))
+# filter(pgmtl_info$sources_info, rank_predicted<=9) %>% summarize(median(rank_actual))
 
 # The sites where the MTL does better tend to be those where all source-target pairs do better.
-sources_info
 
 # Sam: And now circling back to where I think we wanted to go with these figures
 # -- from any of these figures, can we understand for those lakes that had poor
@@ -129,15 +128,16 @@ sources_info
 # were right but the transfer never would have been good"; top right - "we were
 # wrong, but it doesn't matter because the transfer never would have been good";
 # bottom right - "we were wrong, and the transfer could have been good"
-sources_info %>%
-  filter(rank_predicted <= 1) %>%
-  ggplot(aes(x=rank_predicted-rank, y=rmse_min)) +
-  geom_point() +
-  scale_y_log10() +
-  theme_bw()
-sources_info %>%
-  filter(rank_predicted <= 1) %>%
-  ggplot(aes(x=rmse_min, y=rmse)) +
-  geom_abline() +
-  geom_point() +
-  theme_bw()
+
+# pgmtl_info$sources_info %>%
+#   filter(rank_predicted <= 1) %>%
+#   ggplot(aes(x=rank_predicted-rank_actual, y=rmse_min)) +
+#   geom_point() +
+#   scale_y_log10() +
+#   theme_bw()
+# sources_info %>%
+#   filter(rank_predicted <= 1) %>%
+#   ggplot(aes(x=rmse_min, y=actual_rmse)) +
+#   geom_abline() +
+#   geom_point() +
+#   theme_bw()

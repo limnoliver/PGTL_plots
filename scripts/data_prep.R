@@ -57,8 +57,10 @@ lake_metadata_full <- lake_metadata %>%
 
 # Read P[B/G]MTL[9] results from Jared
 # predicted and actual RMSEs for all 44k source-target pairs
+# pbmtl_train_44225 <- readr::read_csv('data/old/PB-MTL_all_sources_with_predictions_200819.csv', na='N/A') %>% # 44k source-target pairs, predicted and actual rmses
+#   rename(actual_rmse = transfer_rmse)
 pbmtl_train_44225 <- readr::read_csv('data/PB-MTL_all_sources_with_predictions.csv', na='N/A') %>% # 44k source-target pairs, predicted and actual rmses
-  rename(actual_rmse = transfer_rmse)
+  rename(actual_rmse = `pb-mtl_rmse`)
 pgmtl_train_44225 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A') %>% # junk (NAs) in columns 13 and 14
   select(target_id, source_id, actual_rmse = `pg-mtl_rmse`, predicted_rmse) # includes metafeatures, but I'm taking them out because they should be computable from lake_metadata_full and eventually lake_metadata
 
@@ -96,36 +98,43 @@ all_eval_2366 <- bind_rows(pb0_eval_2366, pball_eval_450, pbmtl_eval_305, pgmtl_
   tidyr::pivot_wider(names_from='model', values_from='rmse')
 
 # prepare info about the sources
-sources_info_partial <- select(pgmtl_train_44225, target_id, source_id, actual_rmse, predicted_rmse) %>%
-  left_join(select(lake_metadata_full, site_id, lake_name, max_depth, surface_area, n_obs), by=c('source_id'='site_id')) %>%
-  group_by(target_id) %>%
-  mutate(
-    rank_actual = rank(actual_rmse),
-    rank_predicted = rank(predicted_rmse),
-    top_9 = rank_predicted <= 9,
-    rank_category = ifelse(rank_predicted == 1, 'Top 1', ifelse(rank_predicted <= 9, 'Top 9', 'Not Top 9')) %>%
-      ordered(levels=c('Top 1', 'Top 9', 'Not Top 9'))) %>%
-  ungroup()
-# prepare info about each target's set of sources
-target_summary <- sources_info_partial %>%
-  group_by(target_id) %>%
-  summarize(
-    rmse_min = min(actual_rmse),
-    rmse_mean = mean(actual_rmse),
-    rmse_median = median(actual_rmse),
-    rank_top_1 = rank_actual[rank_predicted == 1],
-    min_rank_top_9 = min(rank_actual[top_9]),
-    max_rank_top_9 = max(rank_actual[top_9]),
-    mean_rank_top_9 = mean(rank_actual[top_9]),
-    median_rank_top_9 = median(rank_actual[top_9]),
-    .groups='drop') %>%
-  mutate(
-    site_rank_rmse_mean = rank(rmse_mean),
-    site_rank_rmse_median = rank(rmse_median),
-    site_rank_rank_top_1 = rank(rank_top_1, ties.method='first'),
-    site_rank_min_rank_top_9 = rank(min_rank_top_9, ties.method='first'),
-    site_rank_median_rank_top_9 = rank(median_rank_top_9, ties.method='first'),
-    site_rank_mean_rank_top_9 = rank(mean_rank_top_9, ties.method='first'),
-    site_rank_max_rank_top_9 = rank(max_rank_top_9, ties.method='first'))
-# parepare a single table with info about each target and each source-target pair (is this merger really needed?)
-sources_info <- sources_info_partial %>% left_join(target_summary, by='target_id')
+prep_source_target_info <- function(mtl_train_44225, lake_metadata_full) {
+  sources_info_partial <- select(mtl_train_44225, target_id, source_id, actual_rmse, predicted_rmse) %>%
+    left_join(select(lake_metadata_full, site_id, lake_name, max_depth, surface_area, n_obs), by=c('source_id'='site_id')) %>%
+    group_by(target_id) %>%
+    mutate(
+      rank_actual = rank(actual_rmse),
+      rank_predicted = rank(predicted_rmse),
+      top_9 = rank_predicted <= 9,
+      rank_category = ifelse(rank_predicted == 1, 'Top 1', ifelse(rank_predicted <= 9, 'Top 9', 'Not Top 9')) %>%
+        ordered(levels=c('Top 1', 'Top 9', 'Not Top 9'))) %>%
+    ungroup()
+  # prepare info about each target's set of sources
+  target_summary <- sources_info_partial %>%
+    group_by(target_id) %>%
+    summarize(
+      rmse_min = min(actual_rmse),
+      rmse_mean = mean(actual_rmse),
+      rmse_median = median(actual_rmse),
+      rank_top_1 = rank_actual[rank_predicted == 1],
+      min_rank_top_9 = min(rank_actual[top_9]),
+      max_rank_top_9 = max(rank_actual[top_9]),
+      mean_rank_top_9 = mean(rank_actual[top_9]),
+      median_rank_top_9 = median(rank_actual[top_9]),
+      .groups='drop') %>%
+    mutate(
+      site_rank_rmse_mean = rank(rmse_mean),
+      site_rank_rmse_median = rank(rmse_median),
+      site_rank_rank_top_1 = rank(rank_top_1, ties.method='first'),
+      site_rank_min_rank_top_9 = rank(min_rank_top_9, ties.method='first'),
+      site_rank_median_rank_top_9 = rank(median_rank_top_9, ties.method='first'),
+      site_rank_mean_rank_top_9 = rank(mean_rank_top_9, ties.method='first'),
+      site_rank_max_rank_top_9 = rank(max_rank_top_9, ties.method='first'))
+  # parepare a single table with info about each target and each source-target pair (is this merger really needed?)
+  sources_info <- sources_info_partial %>% left_join(target_summary, by='target_id')
+  
+  return(list(target_summary=target_summary, sources_info=sources_info))
+}
+pgmtl_info <- prep_source_target_info(pgmtl_train_44225, lake_metadata_full)
+pbmtl_info <- prep_source_target_info(pbmtl_train_44225, lake_metadata_full)
+
