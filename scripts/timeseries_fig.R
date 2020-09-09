@@ -185,7 +185,7 @@ plot_all_target_data <- function(all_target_data, min_date, max_date, lake_xdate
   rmse_labels <- eg_targets_info %>%
     mutate(
       date=as.Date(rmse_xdate), temp_c=22, depth_class='shallow', # for positioning on the plot
-      lab=sprintf('PB0: %0.1f C\nPG-MTL: %0.1f C', pb0_rmse, pgmtl_rmse))
+      lab=sprintf('PGDL-MTL: %0.1f °C\nPB0: %0.1f °C', pgmtl_rmse, pb0_rmse))
   panel_letters <- eg_targets_info %>%
     mutate(
       date=as.Date(min_date)+0.02*(as.Date(max_date)-as.Date(min_date)),
@@ -254,7 +254,7 @@ egplot_rmse_predobs <- eg_sources_info %>%
   scale_fill_manual('Target Lake', values=example_colors[1:nrow(targets)], guide='none') +
   scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = c(1, 21), ylim = c(1, 21)) +
   guides(size = guide_legend(override.aes = list(shape=21, fill = neutral_colors[['light']]))) +
-  xlab('Actual RMSE') + ylab('Predicted RMSE') +
+  xlab('Actual RMSE (°C)') + ylab('Predicted RMSE (°C)') +
   theme_minimal() + 
   theme(
     legend.position=c(0.24,0.82),
