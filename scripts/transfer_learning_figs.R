@@ -1,44 +1,48 @@
-# get model results
-
-mod_results <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv')
-ensemble <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_ensemble_sources.csv')
-top_source <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_single_sources.csv')
-glm <- readr::read_csv('data/RMSE_transfer_test_extended_glm.csv')
-
 library(googledrive)
 library(readxl)
 library(ggplot2)
 library(dplyr)
 library(cowplot)
 
-drive_download(as_id('1_Bzy6aI-wZLb_zeUPMLj0GCQPSpJMx3Evrf3CXcMrEU'),
-                           path = 'data/all_mods.xlsx')
-all_mods <- readxl::read_xlsx('data/all_mods.xlsx')
+# get model results
+# first run Alison's script data_getting.R
 
-meta <- mod_results %>%
-  select(target_id, source_observations) %>% distinct()
+files <- list.files('data')
+eval_files <- files[grepl('evaluation.csv', files)]
+dat <- data.frame()
+for (i in 1:length(eval_files)) {
+  temp_dat <- read.csv(file.path('data',  eval_files[i])) %>%
+    mutate(model = gsub('_evaluation.csv', '', eval_files[i]))
+  
+  dat <- bind_rows(dat, temp_dat)
+}
 
 # difference between model performance
-pb0_diff <- all_mods %>%
-  tidyr::gather(key = 'transfer_models', value = 'other_rmse', -target_id, -`PB0_rmse`) %>%
-  mutate(transfer_improvement = other_rmse - PB0_rmse) %>%
+pb0_diff <- dat %>%
+  tidyr::spread(key = model, value = rmse) %>%
+  # filter to just the 305 lakes
+  filter(!is.na(pbmtl)) %>%
+  tidyr::gather(key = 'transfer_models', value = 'other_rmse', -site_id, -pb0) %>%
+  filter(!is.na(other_rmse)) %>%
+  mutate(transfer_improvement = other_rmse - pb0) %>%
   group_by(transfer_models) %>%
   mutate(median_improvement = median(transfer_improvement),
-         median_model = median(other_rmse)) %>% ungroup()
+         median_model = median(other_rmse)) %>% ungroup() %>%
+  filter(!transfer_models %in% 'pball')
 
 pb0_diff$transfer_models <- as.factor(pb0_diff$transfer_models)
 levels(pb0_diff$transfer_models) <- c('PB-MTL', 'PG-MTL', 'PG-MTL9')
 
 # model improvement (y) versus PB0 RMSE (x)
-p0 <- ggplot(pb0_diff, aes(x = `PB0_rmse`, y = `transfer_improvement`)) +
-  geom_point(aes(color = transfer_models), alpha = 0.8) +
+p0 <- ggplot(pb0_diff, aes(x = pb0, y = transfer_improvement)) +
+  geom_point(aes(color = transfer_models), alpha = 0.5, size = 1.2) +
   geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
   #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
   scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0), guide = FALSE) +
   scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
   scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
   scale_x_continuous(breaks = 1:7) +
-  scale_y_continuous(breaks = seq(-4, 6, 2)) +
+  scale_y_continuous(breaks = seq(-4, 4, 2)) +
   facet_wrap(~transfer_models, nrow=3) +
   geom_hline(aes(yintercept = median_improvement, color = transfer_models), size = 2, alpha = 0.5) +
   geom_hline(yintercept = 0, linetype = 2) +
@@ -50,8 +54,8 @@ p0 <- ggplot(pb0_diff, aes(x = `PB0_rmse`, y = `transfer_improvement`)) +
 
 # model RMSE (y) versus PB0 RMSE (x)
 
-p0raw <- ggplot(pb0_diff, aes(x = `PB0_rmse`, y = `other_rmse`)) +
-  geom_point(aes(color = transfer_models), alpha = 0.8) +
+p0raw <- ggplot(pb0_diff, aes(x = pb0, y = other_rmse)) +
+  geom_point(aes(color = transfer_models), alpha = 0.5, size = 1.2) +
   #geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
   #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
   #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0,0,0,0), guide = FALSE) +
@@ -69,39 +73,34 @@ p0raw <- ggplot(pb0_diff, aes(x = `PB0_rmse`, y = `other_rmse`)) +
         axis.title = element_text(size = 14)) +
   labs(x = 'PB0 RMSE', y = 'Transfer RMSE')
 
-# density plot with no points
-p_density <- ggplot(pb0_diff, aes(x = `PB0_rmse`, y = `other_rmse`)) +
-  #geom_point(aes(color = transfer_models), alpha = 0.8) +
-  #geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
-  stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
-  scale_alpha_manual(values = c(0,0, 0,0,0.6,0,0,0,0,0,0,0), guide = FALSE) +
-  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
-  scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')) +
-  #facet_wrap(~transfer_models, nrow=1) +
-  #geom_hline(aes(yintercept = median_model, color = transfer_models), size = 2, alpha = 0.5) +
-  geom_abline(intercept = 0, slope = 1, linetype = 2) +
-  coord_cartesian(xlim = c(1, 5), ylim = c(1,5)) +
-  theme_bw() +
-  theme(strip.background = element_blank(), strip.text = element_blank(),
-        plot.margin = margin(0,0,0,0,'cm')) +
-  labs(x = 'PB0 RMSE', y = 'Transfer RMSE', fill = "Transfer Model")
-
-ggsave('figures/density_all_mods_density10.png', p_density, height = 3.5, width = 5)
 
 # long version of data
-mod_long <- all_mods %>%
-  tidyr::gather(key = 'model', value = 'RMSE', -target_id) %>%
-  mutate(model = gsub('_rmse', '', model)) %>%
+
+# 305 lake IDs
+lakes305 <- unique(pb0_diff$site_id)
+mod_long <- dat %>%
+  filter(site_id %in% lakes305) %>%
   group_by(model) %>%
-  mutate(median_rmse = median(RMSE)) %>% ungroup()
+  mutate(median_rmse = median(rmse),
+         first_q = quantile(rmse, 0.25),
+         third_q = quantile(rmse, 0.75)) %>% ungroup() %>%
+  filter(!model %in% 'pball')
 
-mod_long$model <- factor(mod_long$model, levels = c('PB0', 'PB-MTL', 'PG-MTL', 'PG-MTL9'))
+summary(as.factor(mod_long$model))
+mod_long %>% select(model, median_rmse, first_q, third_q) %>% distinct()
 
-mod_pb0 <- filter(mod_long, model %in% 'PB0') %>% select(-model) %>% rename(pb0_rmse = RMSE, pb0_median_rmse = median_rmse)
-mod_plot<- filter(mod_long, !model %in% 'PB0') %>% left_join(mod_pb0)
+mod_long$model <- as.factor(mod_long$model)
+levels(mod_long$model) <- c('PB0', 'PB-MTL', 'PG-MTL', 'PG-MTL9')
+
+mod_pb0 <- filter(mod_long, model %in% 'PB0') %>% 
+  select(-model) %>% 
+  rename(pb0_rmse = rmse, pb0_median_rmse = median_rmse) %>%
+  select(-first_q, -third_q)
+mod_plot<- filter(mod_long, !model %in% 'PB0') %>% 
+  left_join(mod_pb0)
 
 # overlapping density plots of focal model + PB0 RMSE
-p4 <- ggplot(mod_plot, aes(x = RMSE)) +
+p4 <- ggplot(mod_plot, aes(x = rmse)) +
   geom_density(aes(fill = model, group = model), color = NA, alpha = 0.7) +
   facet_wrap(~model, ncol = 1) +
   scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
@@ -113,7 +112,7 @@ p4 <- ggplot(mod_plot, aes(x = RMSE)) +
   theme(strip.background = element_blank(), strip.text = element_text(size = 14)) +
   theme_bw() +
   scale_x_continuous(breaks = 1:7) +
-  coord_cartesian(xlim = c(1, 7), ylim = c(0, 0.65)) +
+  coord_cartesian(xlim = c(1, 7), ylim = c(0, 0.72)) +
   theme(panel.grid = element_blank(), 
         strip.text = element_blank(), 
         plot.margin = margin(0,0.6,0,0, 'cm'),
@@ -130,24 +129,201 @@ pwrite <- ggdraw(psave) +
   draw_label('PB-MTL', 0.99, 0.86, color = RColorBrewer::brewer.pal(3, 'Dark2')[1], angle = -90) +
   draw_label('PG-MTL', 0.99, 0.54, color = RColorBrewer::brewer.pal(3, 'Dark2')[2], angle = -90) +
   draw_label('PG-MTL9', 0.99, 0.21, color = RColorBrewer::brewer.pal(3, 'Dark2')[3], angle = -90) +
+  draw_label('PB0', 0.82, 0.9, color = 'darkgray') +
+  draw_label('PB0', 0.82, 0.58, color = 'darkgray') +
+  draw_label('PB0', 0.82, 0.26, color = 'darkgray')
+
+ggsave('figures/transfer_plots_9_panel_sep11.png', pwrite, height = 7.5, width = 10.5)
+
+#psave <- cowplot::plot_grid(p4, p0raw, nrow = 2, rel_heights = c(.6, 1), align = 'hv')
+
+##############################
+# do a 2x3 panel figure, same as one row above, but for expanded lake dataset
+# difference between model performance
+pb0_diff_all <- dat %>%
+  tidyr::spread(key = model, value = rmse) %>%
+  # filter to just the 305 lakes
+  filter(is.na(pbmtl) & !is.na(pgmtl)) %>%
+  select(-pball, -pbmtl) %>%
+  tidyr::gather(key = 'transfer_models', value = 'other_rmse', -site_id, -pb0) %>%
+  filter(!is.na(other_rmse)) %>%
+  mutate(transfer_improvement = other_rmse - pb0) %>%
+  group_by(transfer_models) %>%
+  mutate(median_improvement = median(transfer_improvement),
+         median_model = median(other_rmse)) %>% ungroup()
+
+pb0_diff_all$transfer_models <- as.factor(pb0_diff_all$transfer_models)
+levels(pb0_diff_all$transfer_models) <- c('PG-MTL', 'PG-MTL9')
+
+# model improvement (y) versus PB0 RMSE (x)
+p0 <- ggplot(pb0_diff_all, aes(x = pb0, y = transfer_improvement)) +
+  geom_point(aes(color = transfer_models), alpha = 0.2) +
+  geom_smooth(method = 'lm', aes(color = transfer_models), se = FALSE) +
+  #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
+  #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0), guide = FALSE) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[c(1,3)], guide = FALSE) +
+  #scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_y_continuous(breaks = seq(-7, 5, 2)) +
+  facet_wrap(~transfer_models, nrow=3) +
+  geom_hline(aes(yintercept = median_improvement, color = transfer_models), size = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  coord_cartesian(xlim = c(0, 18)) +
+  theme_bw() +
+  theme(strip.background = element_blank(), strip.text = element_blank(),
+        plot.margin = margin(0,0,0,0,'cm'), axis.title = element_text(size = 14)) +
+  labs(x = 'PB0 RMSE', y = 'Change in RMSE (Transfer - PB0)')
+
+# model RMSE (y) versus PB0 RMSE (x)
+
+p0raw <- ggplot(pb0_diff_all, aes(x = pb0, y = other_rmse)) +
+  geom_point(aes(color = transfer_models), alpha = 0.2) +
+  #geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
+  #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
+  #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0,0,0,0), guide = FALSE) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[c(1,3)], guide = FALSE) +
+  #scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
+  scale_x_continuous(breaks = 0:19) +
+  scale_y_continuous(breaks = 0:19) +
+  facet_wrap(~transfer_models, ncol=1) +
+  #geom_hline(aes(yintercept = median_model, color = transfer_models), size = 2, alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = 2) +
+  coord_cartesian(xlim = c(0.5, 19), ylim = c(0.5,19)) +
+  theme_bw() +
+  theme(strip.background = element_blank(), strip.text = element_blank(),
+        plot.margin = margin(0,0,0,0,'cm'), 
+        axis.title = element_text(size = 14)) +
+  labs(x = 'PB0 RMSE', y = 'Transfer RMSE')
+
+
+# long version of data
+
+# 305 lake IDs
+lakes_plus <- unique(pb0_diff_all$site_id)
+mod_long <- dat %>%
+  filter(site_id %in% lakes_plus) %>%
+  group_by(model) %>%
+  mutate(median_rmse = median(rmse),
+         first_q = quantile(rmse, 0.25),
+         third_q = quantile(rmse, 0.75)) %>% ungroup()
+
+mod_long %>% select(model, median_rmse, first_q, third_q) %>% distinct()
+
+mod_long$model <- as.factor(mod_long$model)
+levels(mod_long$model) <- c('PB0', 'PG-MTL', 'PG-MTL9')
+
+mod_pb0 <- filter(mod_long, model %in% 'PB0') %>% select(-model, -first_q, -third_q) %>% rename(pb0_rmse = rmse, pb0_median_rmse = median_rmse)
+mod_plot<- filter(mod_long, !model %in% 'PB0') %>% left_join(mod_pb0)
+
+# overlapping density plots of focal model + PB0 RMSE
+p4 <- ggplot(mod_plot, aes(x = rmse)) +
+  geom_density(aes(fill = model, group = model), color = NA, alpha = 0.7) +
+  facet_wrap(~model, ncol = 1) +
+  scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[c(1,3)], guide = FALSE) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[c(1,3)], guide = FALSE) +
+  geom_density(data = mod_plot, aes(x = pb0_rmse), fill = 'lightgray', color = NA, alpha = 0.7) +
+  geom_vline(aes(xintercept = median_rmse, color = model), size = 1.5) +
+  geom_vline(aes(xintercept = pb0_median_rmse), color = 'lightgray', size = 1.5) +
+  theme_bw() +
+  theme(strip.background = element_blank(), strip.text = element_text(size = 14)) +
+  theme_bw() +
+  scale_x_continuous(breaks = 1:7) +
+  coord_cartesian(xlim = c(0.5, 7), ylim = c(0, 0.6)) +
+  theme(panel.grid = element_blank(), 
+        strip.text = element_blank(), 
+        plot.margin = margin(0,0.6,0,0, 'cm'),
+        axis.title = element_text(size = 14)) +
+  labs(x = 'RMSE', y = 'Density')
+
+p5 <- ggplot(mod_plot, aes(x = RMSE)) +
+  theme(margin(0,0,0,0, 'cm'))
+
+# plot multiple plots together
+psave <- cowplot::plot_grid(p0raw, p0, p4, nrow = 1, align = 'hv')
+
+# add labels
+pwrite <- ggdraw(psave) +
+  draw_label('PG-MTL', 0.99, 0.8, color = RColorBrewer::brewer.pal(3, 'Dark2')[1], angle = -90) +
+  draw_label('PG-MTL9', 0.99, 0.33, color = RColorBrewer::brewer.pal(3, 'Dark2')[3], angle = -90) +
   draw_label('PB0', 0.89, 0.82, color = 'darkgray') +
-  draw_label('PB0', 0.89, 0.50, color = 'darkgray') +
   draw_label('PB0', 0.89, 0.18, color = 'darkgray')
 
-ggsave('figures/transfer_plots_9_panel.png', pwrite, height = 7.5, width = 10.5)
+ggsave('figures/transfer_plots_9_panel_expanded_lakes_sep11.png', pwrite, height = 5, width = 10.5)
 
-psave <- cowplot::plot_grid(p4, p0raw, nrow = 2, rel_heights = c(.6, 1), align = 'hv')
+##############################
+# do a 1x3 panel figure, same as one row above, but for expanded lake dataset
+# difference between model performance
 
-pwrite <- ggdraw(psave) +
-  draw_label('PB-MTL', 0.05, 0.93, color = RColorBrewer::brewer.pal(3, 'Dark2')[1]) +
-  draw_label('PG-MTL', 0.35, 0.93, color = RColorBrewer::brewer.pal(3, 'Dark2')[2]) +
-  draw_label('PG-MTL9', 0.65, 0.93, color = RColorBrewer::brewer.pal(3, 'Dark2')[3]) +
-  draw_label('PB0', 0.27, 0.80, color = 'darkgray') +
-  draw_label('PB0', 0.59, 0.80, color = 'darkgray') +
-  draw_label('PB0', 0.91, 0.80, color = 'darkgray')
+# model improvement (y) versus PB0 RMSE (x)
+p0 <- ggplot(filter(pb0_diff_all, transfer_models %in%  'PG-MTL9'), aes(x = pb0, y = transfer_improvement)) +
+  geom_point(aes(color = transfer_models), alpha = 0.2) +
+  geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
+  #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
+  #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0), guide = FALSE) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[3], guide = FALSE) +
+  #scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_y_continuous(breaks = seq(-6, 4, 2)) +
+  facet_wrap(~transfer_models, nrow=3) +
+  geom_hline(aes(yintercept = median_improvement, color = transfer_models), size = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  coord_cartesian(xlim = c(1, 10)) +
+  theme_bw() +
+  theme(strip.background = element_blank(), strip.text = element_blank(),
+        plot.margin = margin(0,0,0,0,'cm'), axis.title = element_text(size = 10)) +
+  labs(x = 'PB0 RMSE', y = 'Change in RMSE (Transfer - PB0)')
 
-ggsave('figures/transfers_density_rmse_labels.png', height = 5, width = 8)
-  
+# model RMSE (y) versus PB0 RMSE (x)
+
+p0raw <- ggplot(filter(pb0_diff_all, transfer_models %in%  'PG-MTL9'), aes(x = pb0, y = other_rmse)) +
+  geom_point(aes(color = transfer_models), alpha = 0.2) +
+  #geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
+  #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
+  #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0,0,0,0), guide = FALSE) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[3], guide = FALSE) +
+  #scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_y_continuous(breaks = 1:10) +
+  facet_wrap(~transfer_models, ncol=1) +
+  #geom_hline(aes(yintercept = median_model, color = transfer_models), size = 2, alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = 2) +
+  coord_cartesian(xlim = c(0.5, 10), ylim = c(0.5,10)) +
+  theme_bw() +
+  theme(strip.background = element_blank(), strip.text = element_blank(),
+        plot.margin = margin(0,0,0,0,'cm'), 
+        axis.title = element_text(size = 10)) +
+  labs(x = 'PB0 RMSE', y = 'Transfer RMSE')
+
+# overlapping density plots of focal model + PB0 RMSE
+p4 <- ggplot(filter(mod_plot, model %in% 'PG-MTL9'), aes(x = rmse)) +
+  geom_density(aes(fill = model, group = model), color = NA, alpha = 0.7) +
+  #facet_wrap(~model, ncol = 1) +
+  scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[3], guide = FALSE) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[3], guide = FALSE) +
+  geom_density(data = mod_plot, aes(x = pb0_rmse), fill = 'lightgray', color = NA, alpha = 0.7) +
+  geom_vline(aes(xintercept = median_rmse, color = model), size = 1.5) +
+  geom_vline(aes(xintercept = pb0_median_rmse), color = 'lightgray', size = 1.5) +
+  theme_bw() +
+  theme(strip.background = element_blank(), strip.text = element_text(size = 14)) +
+  theme_bw() +
+  scale_x_continuous(breaks = 1:7) +
+  coord_cartesian(xlim = c(0.5, 7), ylim = c(0, 0.6)) +
+  theme(panel.grid = element_blank(), 
+        strip.text = element_blank(), 
+        plot.margin = margin(0,0.6,0,0, 'cm'),
+        axis.title = element_text(size = 10)) +
+  labs(x = 'RMSE', y = 'Density')
+
+p5 <- ggplot(mod_plot, aes(x = RMSE)) +
+  theme(margin(0,0,0,0, 'cm'))
+
+# plot multiple plots together
+psave <- cowplot::plot_grid(p0raw, p0, p4, nrow = 1, align = 'hv')
+
+ggsave('figures/transfer_plots_3_panel_expanded_lakes_pgmtl9.png', psave, height = 2.5, width = 10.5)
+
+###############################
+# leftovers
 p1 <- ggplot(filter(mod_long, model %in% c('PB-MTL', 'PB0')), aes(x = RMSE)) +
   geom_vline(aes(xintercept = median_rmse, color = model), size = 2, linetype = 2) +
   geom_density(aes(fill = model), color = NA, alpha = 0.7) +
@@ -192,19 +368,24 @@ ggsave('figures/mtl_with_densities.png',
 
 ggsave('figures/mtl_with_densities.png')
 
-# facet_wrap histograms
-mod_plots_mtl <- filter(mod_long, !model %in% 'PB0')
-mod_plots()
-ggsave('figures/pb0_versus_transfers.png', height = 4, width = 8)
-ggplot(pb0_diff, aes(x = `PB0_rmse`, y = `other_rmse`)) +
-  #geom_point(aes(color = transfer_models)) +
+###############################
+# density plot with no points
+# no longer using this fig
+p_density <- ggplot(pb0_diff, aes(x = pb0, y = other_rmse)) +
+  #geom_point(aes(color = transfer_models), alpha = 0.8) +
+  #geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
   stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
-  scale_alpha_manual(values = c(0, 0,0,0,0.2,0,0,0,0,0,0)) +
-  #scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
-  #scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
-  scale_x_continuous(breaks = 1:7) +
-  scale_y_continuous(breaks = seq(-4, 6, 2)) +
+  scale_alpha_manual(values = c(0,0, 0,0,0.6,0,0,0,0,0,0,0,0), guide = FALSE) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
+  scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')) +
   #facet_wrap(~transfer_models, nrow=1) +
-  geom_hline(aes(yintercept = median_model, color = transfer_models), size = 2) +
-  geom_abline(intercept = 0, slope = 1) +
-  theme_bw()
+  #geom_hline(aes(yintercept = median_model, color = transfer_models), size = 2, alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = 2) +
+  coord_cartesian(xlim = c(1, 5), ylim = c(1,5)) +
+  theme_bw() +
+  theme(strip.background = element_blank(), strip.text = element_blank(),
+        plot.margin = margin(0,0,0,0,'cm')) +
+  labs(x = 'PB0 RMSE', y = 'Transfer RMSE', fill = "Transfer Model")
+
+ggsave('figures/density_all_mods_density10.png', p_density, height = 3.5, width = 5)
+
