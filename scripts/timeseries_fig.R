@@ -85,7 +85,8 @@ g <- ggplot(targets_in_context, aes(x=pb0_rmse, y=pgmtl_rmse, shape=lathrop_reca
   geom_point(data=filter(targets_in_context, status=='selected'), aes(color=site_id)) +
   scale_shape_manual('', values=c(4, 20)) +
   theme_bw()
-ggplotly(g)
+p <- ggplotly(g)
+htmlwidgets::saveWidget(p, sprintf("%s/figures/examples_selection.html", getwd()), selfcontained = TRUE)
 # here's a fully plotly version, but ggplotly(g) does the trick
 # plot_ly(data = targets_in_context, x = ~pb0_rmse, y = ~pgmtl_rmse, text = ~marker_text) %>%
 #   add_trace(data=dplyr::filter(targets_in_context, status=='unavailable', lathrop_recalc <= 3.8), # unstratified
