@@ -6,7 +6,7 @@ source('scripts/data_prep.R')
 
 # TODO: plot spearman rank coefficient for each target model in the rank plot, separate y axis?
 # one finding is that spearman ranks were worse for PBMTL than for PGMTL
-plot_rankplot <- function(sources_info, model_type=c('PB','PG')) {
+plot_rankplot <- function(sources_info, model_type=c('PB','PGDL')) {
   # c(PB='Process-based', PG='Process-guided')[model_type]
   rankplot <- sources_info %>%
     ggplot(aes(x=site_rank_rmse_median, y=actual_rmse, color=rank_category)) +# site_rank_rank_top_1, site_rank_rmse_median, median_rank_top_9, min_rank_top_9
@@ -20,14 +20,8 @@ plot_rankplot <- function(sources_info, model_type=c('PB','PG')) {
   rankplot
   ggsave(sprintf('figures/metamodel_rankplot_%s.png', model_type), rankplot, width=7, height=4)
 }
-plot_rankplot(pgmtl_info$sources_info, model_type='PG')
-# filter(pbmtl_info$sources_info, actual_rmse <= 0 | is.na(actual_rmse)) %>% select(target_id, source_id, actual_rmse)
-# A tibble: 2 x 3
-#   target_id                                    source_id       actual_rmse
-#   <chr>                                        <chr>                 <dbl>
-# 1 nhdhr_155442361                              nhdhr_143396594         NaN
-# 2 nhdhr_{62B48949-8CCC-4BA3-989E-AA1FE86C363D} nhdhr_120020373        -999
-plot_rankplot(filter(pbmtl_info$sources_info, actual_rmse > 0), model_type='PB')
+plot_rankplot(pgmtl_info$sources_info, model_type='PGDL')
+plot_rankplot(pbmtl_info$sources_info, model_type='PB')
 
 # filter(sources_info, top_9) %>%
 #   ggplot(aes(x=site_rank_rmse_median, y=rank)) +
@@ -55,7 +49,7 @@ plot_rankplot(filter(pbmtl_info$sources_info, actual_rmse > 0), model_type='PB')
 #   ylab('Actual rank of the source predicted to be rank 1') +
 #   theme_bw()
 
-plot_beanplot <- function(target_summary, model_type='PG') {
+plot_beanplot <- function(target_summary, model_type='PGDL') {
   beanplot_data <- target_summary %>%
     select(rank_top_1, min_rank_top_9, max_rank_top_9, median_rank_top_9) %>%
     pivot_longer(cols=everything(), names_to='rank_statistic', values_to='rank') %>%
@@ -101,7 +95,7 @@ plot_beanplot <- function(target_summary, model_type='PG') {
   beanplot
   ggsave(sprintf('figures/metamodel_beanplot_%s.png', model_type), beanplot, width=7, height=4)
 }
-plot_beanplot(pgmtl_info$target_summary, model_type='PG')
+plot_beanplot(pgmtl_info$target_summary, model_type='PGDL')
 plot_beanplot(pbmtl_info$target_summary, model_type='PB')
 
 # filter(sources_info, rank_predicted==1) %>%
