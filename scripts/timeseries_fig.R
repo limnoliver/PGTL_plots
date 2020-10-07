@@ -219,7 +219,7 @@ egplot_depth_area <- ggplot(eg_sources_info, aes(x=surface_area/1000000, y=max_d
   geom_point(data=filter(eg_sources_info, source_lathrop_strat == 0), aes(size=n_obs), color=neutral_colors[['dark']], shape=20) +
   geom_point(data=filter(eg_sources_info, source_lathrop_strat == 1), aes(size=n_obs), color=neutral_colors[['light']], shape=20) +
   geom_point(data=eg_targets_info, aes(fill=target_name, shape=target_name), size=3, color='black') + # color=pgmtl_colors[['central']]
-  geom_point(data=filter(eg_sources_info, top_9), aes(fill=target_name, shape=target_name), size=2, color='none') + # color=pgmtl9_colors[['dark']]
+  geom_point(data=filter(eg_sources_info, top_9), aes(fill=target_name, shape=target_name), size=2, color='transparent') + # color=pgmtl9_colors[['dark']]
   annotate('text', x = min(eg_sources_info$surface_area/1000000), y=0.99*max(eg_sources_info$max_depth), label='d', size=5) +
   scale_shape_manual('Target Lake', values=c(24,23,22,21)[1:nrow(targets)]) + #21
   scale_color_manual('Target Lake', values=example_colors[1:nrow(targets)]) +
@@ -248,7 +248,7 @@ egplot_rmse_predobs <- eg_sources_info %>%
   annotate('text', x = 1.1, y = 23, label='e', size=5) +
   scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(pgmtl_info$sources_info$rank_category)) +
   scale_size_manual('Metamodel\nPrediction', values=c(3, 2, 1), breaks=levels(pgmtl_info$sources_info$rank_category)) +
-  scale_color_manual('Metamodel\nPrediction', values=c('black','none','white'), breaks=levels(pgmtl_info$sources_info$rank_category)) +
+  scale_color_manual('Metamodel\nPrediction', values=c('black','#ffffffaa','white'), breaks=levels(pgmtl_info$sources_info$rank_category)) +
   #scale_color_manual('Metamodel\nPrediction', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']],'none'), breaks=levels(pgmtl_info$sources_info$rank_category)) +
   scale_shape_manual('Target Lake', values=c(24,23,22,21)[1:nrow(targets)], guide='none') +
   scale_fill_manual('Target Lake', values=example_colors[1:nrow(targets)], guide='none') +
