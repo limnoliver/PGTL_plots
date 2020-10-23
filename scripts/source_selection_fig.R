@@ -92,14 +92,14 @@ plot_2model_boxplot <- function(...) {
       .groups='drop') %>%
     pivot_longer(cols=starts_with('q'), names_to='quantile', names_prefix='q', values_to='rank') %>%
     mutate(hline_x=as.numeric(rank_statistic_label))
-  beanplot <- ggplot(beanplot_data, aes(x=rank_statistic_label, linetype=Model)) +
-    geom_boxplot(aes(y=rank), color='black', fill='white') +
-    scale_linetype_manual(
-      'Source model',
-      values=c(`PB`='dotted', `PGDL`='solid')) +
-    # scale_fill_manual(
+  beanplot <- ggplot(beanplot_data, aes(x=rank_statistic_label, fill=Model)) +
+    geom_boxplot(aes(y=rank), color='black', alpha=0.2) +
+    # scale_linetype_manual(
     #   'Source model',
-    #   values=c(`PB`=model_colors[['PB-MTL']], `PGDL`=model_colors[['PG-MTL']])) +
+    #   values=c(`PB`='dotted', `PGDL`='dashed')) +
+    scale_fill_manual(
+      'Source model',
+      values=c(`PB`='grey70', `PGDL`='white')) +
     xlab(NULL) +
     ylab('Actual rank of source model by RMSE') +
     theme_bw()
