@@ -93,7 +93,7 @@ plot_2model_boxplot <- function(...) {
     pivot_longer(cols=starts_with('q'), names_to='quantile', names_prefix='q', values_to='rank') %>%
     mutate(hline_x=as.numeric(rank_statistic_label))
   beanplot <- ggplot(beanplot_data, aes(x=rank_statistic_label, fill=Model)) +
-    geom_boxplot(aes(y=rank), color='black', alpha=0.2) +
+    geom_boxplot(aes(y=rank), color='black') +
     # scale_linetype_manual(
     #   'Source model',
     #   values=c(`PB`='dotted', `PGDL`='dashed')) +
