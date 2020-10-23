@@ -64,6 +64,13 @@ lapply(example_sites, function(site_id) {
   }
 })
 
+# source model info - predicted and observed RMSEs
+sbtools::item_file_download(
+  sb_id='5ebe569582ce476925e44b2f',
+  names='all_MTL_RMSE_predictions.csv',
+  destinations='data/all_MTL_RMSE_predictions.csv',
+  overwrite_file = TRUE)
+
 # evaluation files
 eval_files <- sprintf('%s_evaluation.csv', c('pb0','pball','pbmtl','pgmtl','pgmtl9'))
 sbtools::item_file_download(

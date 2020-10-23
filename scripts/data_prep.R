@@ -1,5 +1,3 @@
-# as of 6/25, this file is only used for the examples and metamodel-source-selection-performance figures
-
 library(feather)
 library(tidyverse)
 
@@ -59,10 +57,20 @@ lake_metadata_full <- lake_metadata %>%
 # predicted and actual RMSEs for all 44k source-target pairs
 # pbmtl_train_44225 <- readr::read_csv('data/old/PB-MTL_all_sources_with_predictions_200819.csv', na='N/A') %>% # 44k source-target pairs, predicted and actual rmses
 #   rename(actual_rmse = transfer_rmse)
-pbmtl_train_44225 <- readr::read_csv('data/PB-MTL_all_sources_with_predictions.csv', na='N/A') %>% # 44k source-target pairs, predicted and actual rmses
-  rename(actual_rmse = `pb-mtl_rmse`)
-pgmtl_train_44225 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A') %>% # junk (NAs) in columns 13 and 14
-  select(target_id, source_id, actual_rmse = `pg-mtl_rmse`, predicted_rmse) # includes metafeatures, but I'm taking them out because they should be computable from lake_metadata_full and eventually lake_metadata
+# pbmtl_train_44225 <- readr::read_csv('data/PB-MTL_all_sources_with_predictions.csv', na='N/A') %>% # 44k source-target pairs, predicted and actual rmses
+#   rename(actual_rmse = `pb-mtl_rmse`)
+# pgmtl_train_44225 <- readr::read_csv('data/PG-MTL_result_matrix_test_lakes_all_sources.csv', na='N/A') %>% # junk (NAs) in columns 13 and 14
+#   select(target_id, source_id, actual_rmse = `pg-mtl_rmse`, predicted_rmse) # includes metafeatures, but I'm taking them out because they are computable from lake_metadata
+pbmtl_train_44225 <- readr::read_csv('data/all_MTL_RMSE_predictions.csv', col_types=cols()) %>%
+  select(target_id, source_id,
+         actual_rmse = actual_pb_mtl_rmse, predicted_rmse = pred_pb_mtl_rmse,
+         actual_rank = actual_pb_mtl_rank, predicted_rank = pred_pb_mtl_rank)
+pgmtl_train_44225 <- readr::read_csv('data/all_MTL_RMSE_predictions.csv', col_types=cols()) %>%
+  select(target_id, source_id,
+         actual_rmse = actual_pgdl_mtl_rmse, predicted_rmse = pred_pgdl_mtl_rmse,
+         actual_rank = actual_pgdl_mtl_rank, predicted_rank = pred_pgdl_mtl_rank)
+
+
 
 # More results from Jared
 # I think we don't actually need these files because pred+obs RMSEs are in the pxmtl_train_44225 files and metafeatures are in lake_metadata_full.
