@@ -40,28 +40,36 @@ sbtools::item_file_download(
 lake_metadata <- readr::read_csv('data/lake_metadata.csv', col_types=cols())
 unzip('data/zips/01_spatial.zip', exdir='data/spatial')
 
-# predictions for example sites...but at the moment I'm not actually using these, and they take ~30 minutes to download
-# example_sites <- dir('data/examples/mtl_outputs_for_fig') # use these as a guide for what to download from SB
-# if(!dir.exists('data/zips')) dir.create('data/zips')
-# if(!dir.exists('data/predictions')) dir.create('data/predictions')
-# lapply(example_sites, function(site_id) {
-#   group <- lake_metadata %>%
-#     filter(site_id == !!site_id) %>%
-#     pull(group_id)
-#   for(model in c('pb0','pball','pgmtl','pgmtl9')) {
-#     zipfile <- sprintf('data/zips/%s_predictions_%s.zip', model, group)
-#     if(!file.exists(zipfile)) {
-#       message(sprintf('downloading %s', basename(zipfile)))
-#       sbtools::item_file_download(
-#         sb_id='5ebe569582ce476925e44b2f',
-#         names=basename(zipfile), destinations=zipfile)
-#     }
-#     predfile <- sprintf('%s_%s_temperatures.csv', model, site_id)
-#     if(!file.exists(predfile)) {
-#       unzip(zipfile, files=predfile, exdir='data/predictions')
-#     }
-#   }
-# })
+# predictions for example sites...they take ~10 minutes per model type to download
+example_sites <- grep('^nhdhr_.*', dir('data/examples/mtl_outputs_for_fig'), value=TRUE) # use these as a guide for what to download from SB
+if(!dir.exists('data/zips')) dir.create('data/zips')
+if(!dir.exists('data/predictions')) dir.create('data/predictions')
+lapply(example_sites, function(site_id) {
+  group <- lake_metadata %>%
+    filter(site_id == !!site_id) %>%
+    pull(group_id)
+  for(model in c('pb0')) { #c('pb0','pball','pgmtl','pgmtl9')
+    zipfile <- sprintf('data/zips/%s_predictions_%s.zip', model, group)
+    if(!file.exists(zipfile)) {
+      message(sprintf('downloading %s', basename(zipfile)))
+      sbtools::item_file_download(
+        sb_id='5ebe569582ce476925e44b2f',
+        names=basename(zipfile), destinations=zipfile,
+        overwrite_file=TRUE)
+    }
+    predfile <- sprintf('%s_%s_temperatures.csv', model, site_id)
+    if(!file.exists(predfile)) {
+      unzip(zipfile, files=predfile, exdir='data/predictions')
+    }
+  }
+})
+
+# source model info - predicted and observed RMSEs
+sbtools::item_file_download(
+  sb_id='5ebe569582ce476925e44b2f',
+  names='all_MTL_RMSE_predictions.csv',
+  destinations='data/all_MTL_RMSE_predictions.csv',
+  overwrite_file = TRUE)
 
 # evaluation files
 eval_files <- sprintf('%s_evaluation.csv', c('pb0','pball','pbmtl','pgmtl','pgmtl9'))
