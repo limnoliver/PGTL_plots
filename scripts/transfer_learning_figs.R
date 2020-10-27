@@ -35,7 +35,7 @@ levels(pb0_diff$transfer_models) <- c('PB-MTL', 'PG-MTL', 'PG-MTL9')
 
 # model improvement (y) versus PB0 RMSE (x)
 p0 <- ggplot(pb0_diff, aes(x = pb0, y = transfer_improvement)) +
-  geom_point(aes(color = transfer_models), alpha = 0.5, size = 1.2) +
+  geom_point(aes(color = transfer_models), alpha = 0.5, size = 1.3, shape = 16) +
   geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
   #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
   scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0), guide = FALSE) +
@@ -55,7 +55,7 @@ p0 <- ggplot(pb0_diff, aes(x = pb0, y = transfer_improvement)) +
 # model RMSE (y) versus PB0 RMSE (x)
 
 p0raw <- ggplot(pb0_diff, aes(x = pb0, y = other_rmse)) +
-  geom_point(aes(color = transfer_models), alpha = 0.5, size = 1.2) +
+  geom_point(aes(color = transfer_models), alpha = 0.5, size = 1.3, shape = 16) +
   #geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
   #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
   #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0,0,0,0), guide = FALSE) +
@@ -112,7 +112,7 @@ p4 <- ggplot(mod_plot, aes(x = rmse)) +
   theme(strip.background = element_blank(), strip.text = element_text(size = 14)) +
   theme_bw() +
   scale_x_continuous(breaks = 1:7) +
-  coord_cartesian(xlim = c(1, 7), ylim = c(0, 0.72)) +
+  coord_cartesian(xlim = c(1, 5), ylim = c(0, 0.72)) +
   theme(panel.grid = element_blank(), 
         strip.text = element_blank(), 
         plot.margin = margin(0,0.6,0,0, 'cm'),
@@ -127,18 +127,20 @@ psave <- cowplot::plot_grid(p0raw, p0, p4, nrow = 1, align = 'hv')
 
 pwrite <- ggdraw(psave) +
   draw_label('PB-MTL', 0.99, 0.86, color = RColorBrewer::brewer.pal(3, 'Dark2')[1], angle = -90) +
-  draw_label('PG-MTL', 0.99, 0.54, color = RColorBrewer::brewer.pal(3, 'Dark2')[2], angle = -90) +
-  draw_label('PG-MTL9', 0.99, 0.21, color = RColorBrewer::brewer.pal(3, 'Dark2')[3], angle = -90) +
-  draw_label('PB0', 0.82, 0.9, color = 'darkgray') +
-  draw_label('PB0', 0.82, 0.58, color = 'darkgray') +
-  draw_label('PB0', 0.82, 0.26, color = 'darkgray')
+  draw_label('PGDL-MTL', 0.99, 0.54, color = RColorBrewer::brewer.pal(3, 'Dark2')[2], angle = -90) +
+  draw_label('PGDL-MTL9', 0.99, 0.21, color = RColorBrewer::brewer.pal(3, 'Dark2')[3], angle = -90) +
+  draw_label('PB0', 0.92, 0.81, color = 'darkgray') +
+  draw_line(x = c(0.92, 0.908), y = c(0.79, 0.74), 
+            color = 'darkgray', lineend = 'butt', linejoin = 'mitre')
+  #draw_label('PB0', 0.82, 0.58, color = 'darkgray') +
+  #draw_label('PB0', 0.82, 0.26, color = 'darkgray')
 
-ggsave('figures/transfer_plots_9_panel_sep11.png', pwrite, height = 7.5, width = 10.5)
+ggsave('figures/transfer_plots_9_panel_oct27.png', pwrite, height = 7.5, width = 10.5)
 
 #psave <- cowplot::plot_grid(p4, p0raw, nrow = 2, rel_heights = c(.6, 1), align = 'hv')
 
 ##############################
-# do a 2x3 panel figure, same as one row above, but for expanded lake dataset
+# do a 2x3 panel figure, same as two rows above, but for expanded lake dataset
 # difference between model performance
 pb0_diff_all <- dat %>%
   tidyr::spread(key = model, value = rmse) %>%
@@ -157,42 +159,45 @@ levels(pb0_diff_all$transfer_models) <- c('PG-MTL', 'PG-MTL9')
 
 # model improvement (y) versus PB0 RMSE (x)
 p0 <- ggplot(pb0_diff_all, aes(x = pb0, y = transfer_improvement)) +
-  geom_point(aes(color = transfer_models), alpha = 0.2) +
+  geom_point(aes(color = transfer_models), alpha = 0.3, size = 1, shape = 16) +
   geom_smooth(method = 'lm', aes(color = transfer_models), se = FALSE) +
   #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
   #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0), guide = FALSE) +
   scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[c(1,3)], guide = FALSE) +
   #scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
-  scale_x_continuous(breaks = 1:10) +
-  scale_y_continuous(breaks = seq(-7, 5, 2)) +
+  scale_x_continuous(breaks = 1:9) +
+  scale_y_continuous(breaks = seq(-4, 4, 2)) +
   facet_wrap(~transfer_models, nrow=3) +
   geom_hline(aes(yintercept = median_improvement, color = transfer_models), size = 2, alpha = 0.5) +
   geom_hline(yintercept = 0, linetype = 2) +
-  coord_cartesian(xlim = c(0, 18)) +
+  coord_cartesian(xlim = c(1, 9)) +
   theme_bw() +
   theme(strip.background = element_blank(), strip.text = element_blank(),
-        plot.margin = margin(0,0,0,0,'cm'), axis.title = element_text(size = 14)) +
+        plot.margin = margin(0,0,0,0,'cm'), 
+        axis.title = element_text(size = 14),
+        panel.grid.minor.x = element_blank()) +
   labs(x = 'PB0 RMSE', y = 'Change in RMSE (Transfer - PB0)')
 
 # model RMSE (y) versus PB0 RMSE (x)
 
 p0raw <- ggplot(pb0_diff_all, aes(x = pb0, y = other_rmse)) +
-  geom_point(aes(color = transfer_models), alpha = 0.2) +
+  geom_point(aes(color = transfer_models), alpha = 0.3, size = 1, shape = 16) +
   #geom_smooth(method = 'lm', aes(group = transfer_models, color = transfer_models), se = FALSE) +
   #stat_density_2d(aes(fill = transfer_models, alpha = as.factor(..level..)), geom = "polygon") +
   #scale_alpha_manual(values = c(.2, 0,0,0,0,0,0,0,0,0,0), guide = FALSE) +
   scale_color_manual(values = RColorBrewer::brewer.pal(3, 'Dark2')[c(1,3)], guide = FALSE) +
   #scale_fill_manual(values = RColorBrewer::brewer.pal(3, 'Dark2'), guide = FALSE) +
-  scale_x_continuous(breaks = 0:19) +
-  scale_y_continuous(breaks = 0:19) +
+  scale_x_continuous(breaks = 1:9) +
+  scale_y_continuous(breaks = 1:9) +
   facet_wrap(~transfer_models, ncol=1) +
   #geom_hline(aes(yintercept = median_model, color = transfer_models), size = 2, alpha = 0.5) +
   geom_abline(intercept = 0, slope = 1, linetype = 2) +
-  coord_cartesian(xlim = c(0.5, 19), ylim = c(0.5,19)) +
+  coord_cartesian(xlim = c(1, 9), ylim = c(1,9)) +
   theme_bw() +
   theme(strip.background = element_blank(), strip.text = element_blank(),
         plot.margin = margin(0,0,0,0,'cm'), 
-        axis.title = element_text(size = 14)) +
+        axis.title = element_text(size = 14),
+        panel.grid.minor = element_blank()) +
   labs(x = 'PB0 RMSE', y = 'Transfer RMSE')
 
 
@@ -227,8 +232,8 @@ p4 <- ggplot(mod_plot, aes(x = rmse)) +
   theme_bw() +
   theme(strip.background = element_blank(), strip.text = element_text(size = 14)) +
   theme_bw() +
-  scale_x_continuous(breaks = 1:7) +
-  coord_cartesian(xlim = c(0.5, 7), ylim = c(0, 0.6)) +
+  scale_x_continuous(breaks = 1:5) +
+  coord_cartesian(xlim = c(0.5, 5), ylim = c(0, 0.65)) +
   theme(panel.grid = element_blank(), 
         strip.text = element_blank(), 
         plot.margin = margin(0,0.6,0,0, 'cm'),
@@ -243,12 +248,13 @@ psave <- cowplot::plot_grid(p0raw, p0, p4, nrow = 1, align = 'hv')
 
 # add labels
 pwrite <- ggdraw(psave) +
-  draw_label('PG-MTL', 0.99, 0.8, color = RColorBrewer::brewer.pal(3, 'Dark2')[1], angle = -90) +
-  draw_label('PG-MTL9', 0.99, 0.33, color = RColorBrewer::brewer.pal(3, 'Dark2')[3], angle = -90) +
-  draw_label('PB0', 0.89, 0.82, color = 'darkgray') +
-  draw_label('PB0', 0.89, 0.18, color = 'darkgray')
+  draw_label('PGDL-MTL', 0.99, 0.8, color = RColorBrewer::brewer.pal(3, 'Dark2')[1], angle = -90) +
+  draw_label('PGDL-MTL9', 0.99, 0.33, color = RColorBrewer::brewer.pal(3, 'Dark2')[3], angle = -90) +
+  draw_label('PB0', 0.90, 0.75, color = 'darkgray')+
+  draw_line(x = c(0.90, 0.89), y = c(0.725, 0.65), color = 'darkgray')
+  #draw_label('PB0', 0.83, 0.34, color = 'darkgray')
 
-ggsave('figures/transfer_plots_9_panel_expanded_lakes_sep11.png', pwrite, height = 5, width = 10.5)
+ggsave('figures/transfer_plots_6_panel_expanded_lakes_oct27.png', pwrite, height = 5, width = 10.5)
 
 ##############################
 # do a 1x3 panel figure, same as one row above, but for expanded lake dataset
