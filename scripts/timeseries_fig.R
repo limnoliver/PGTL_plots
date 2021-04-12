@@ -24,12 +24,12 @@ plot_year <- 2012
 plot_min_date <- as.Date(sprintf('%d-01-01', plot_year))
 plot_max_date <- as.Date(sprintf('%d-12-31', plot_year))
 
-# read PGMTL and PB0 predictions (just to pick out max depths; we'll subset later)
-pgmtl_temp_preds <- purrr::map_df(set_names(unique(well_observed$site_id)), function(site_id) {
+# read PGMTL and PB0 predictions (just to pick out max depths; we'll subset later). These commands take about 60 seconds apiece.
+pgmtl_temp_preds <- purrr::map_df(set_names(core_sites), function(site_id) {
   out <- tryCatch(readr::read_csv(sprintf('data/predictions/pgmtl_%s_temperatures.csv', site_id), col_types=cols()), error=function(e) {NULL})
 }, .id='site_id') %>%
   select(site_id, date, everything(), -index)
-pb0_temp_preds <- purrr::map_df(set_names(unique(well_observed$site_id)), function(site_id) {
+pb0_temp_preds <- purrr::map_df(set_names(core_sites), function(site_id) {
   out <- tryCatch(readr::read_csv(sprintf('data/predictions/pb0_%s_temperatures.csv', site_id), col_types=cols()), error=function(e) {NULL})
 }, .id='site_id') %>%
   select(site_id, date, everything())
@@ -37,7 +37,7 @@ pb0_temp_preds <- purrr::map_df(set_names(unique(well_observed$site_id)), functi
 # pick out max depths for which PGMTL and PB0 have complete timeseries
 find_max_depth <- function(temp_preds) {
   temp_preds %>%
-    filter(between(date, plot_min_date, plot_max_date), site_id %in% unique(well_observed$site_id)) %>%
+    filter(between(date, plot_min_date, plot_max_date), site_id %in% core_sites) %>%
     tidyr::pivot_longer(cols=!any_of(c('site_id','date')), names_to='depth', names_prefix='temp_', names_transform=list(depth = as.numeric), values_to='temp') %>%
     group_by(site_id, depth) %>%
     summarize(depth_complete = !any(is.na(temp)), .groups='drop_last') %>%
@@ -56,7 +56,7 @@ plot_temp_obs <- temp_obs %>%
   select(-source)
 common_depths <- plot_temp_obs %>%
   left_join(max_depths_pred, by='site_id') %>%
-  filter(depth <= max_pred_depth) %>%
+  filter(depth <= max_pred_depth) %>% # don't pick an observed depth that's deeper than the completely modeled depths
   group_by(site_id, depth) %>% 
   tally(name='num_obs') %>%
   mutate(num_depths = n(), depth_class = ordered(case_when(depth <= max(depth)/2 ~ 'shallow', TRUE ~ 'deep'), levels=c('shallow','deep'))) %>%
@@ -139,22 +139,46 @@ candidate_sites <- full_join(strat_obs, strat_pred, suffix=c('_obs','_pred'), by
   filter(!is.na(stratifies_obs), !is.na(stratifies_pred)) %>%
   left_join(pivot_wider(well_observed, names_from='depth_class', values_from=c('depth','num_obs')), by='site_id') %>%
   left_join(all_eval_2366, by='site_id') %>%
-  left_join(lake_metadata_full, by='site_id')
+  left_join(lake_metadata_full, by='site_id') %>%
+  mutate(
+    lathrop_obs_agree = stratifies_obs == lathrop_strat, # motivation: Medicine Lake (120018088 had !stratifies_obs but lathrop_strat and sure looks stratified, just with noisy observations)
+    desired_pgdl_pb0_order = case_when(
+      stratifies_obs == stratifies_pred ~ pgmtl_rmse < pb0_rmse,
+      stratifies_obs != stratifies_pred ~ pgmtl_rmse > pb0_rmse),
+    example_quality = case_when(
+      stratifies_obs == stratifies_pred ~ -pgmtl_rmse,
+      stratifies_obs != stratifies_pred ~ pgmtl_rmse))
 candidate_sites %>%
+  filter(desired_pgdl_pb0_order) %>%
   group_by(stratifies_obs, stratifies_pred) %>% tally
-candidate_sites %>% filter(stratifies_obs == lathrop_strat, stratifies_obs==FALSE, stratifies_pred==TRUE) %>% select(site_id, frac_days_strat_obs, frac_days_strat_pred, depth_deep) %>% arrange(frac_days_strat_obs - frac_days_strat_pred)
+show_candidates <- function(candidate_sites, strat_obs=c(TRUE, FALSE), strat_pred=c(TRUE, FALSE)) {
+  candidate_sites %>%
+    filter(stratifies_obs %in% strat_obs, stratifies_pred %in% strat_pred) %>%
+    # filter(lathrop_obs_agree) %>% # optional but helps clean up comparisons between col 1 and col 2
+    select(desired_pgdl_pb0_order, lathrop_obs_agree, stratifies_obs, stratifies_pred, site_id, frac_days_strat_obs, frac_days_strat_pred, depth_deep) %>%
+    group_by(stratifies_obs, stratifies_pred, lathrop_obs_agree, desired_pgdl_pb0_order) %>%
+    arrange(frac_days_strat_obs - frac_days_strat_pred)
+}
+show_candidates(candidate_sites) %>% tally()
+show_candidates(candidate_sites) %>% filter(lathrop_obs_agree) %>% group_by(stratifies_obs, stratifies_pred, lathrop_obs_agree) %>% tally() # limits the TRUE/FALSE combo to 1 site
+show_candidates(candidate_sites) %>% filter(desired_pgdl_pb0_order) %>% group_by(stratifies_obs, stratifies_pred, desired_pgdl_pb0_order) %>% tally() # limits the FALSE/TRUE combo to 1 site
+show_candidates(candidate_sites) %>% filter(lathrop_obs_agree, desired_pgdl_pb0_order) %>% tally()
+show_candidates(candidate_sites, strat_obs=TRUE, strat_pred=FALSE) %>% filter(lathrop_obs_agree, desired_pgdl_pb0_order) # there's only one in each disagreement category that meets all requirements
+show_candidates(candidate_sites, strat_obs=FALSE, strat_pred=TRUE) %>% filter(lathrop_obs_agree, desired_pgdl_pb0_order) # there's only one in each disagreement category that meets all requirements
 targets <- candidate_sites %>%
+  # Choose target sites through a combination of filtering, ranking, and picking the top-ranked in each category
   # filter(depth_deep > 2.5) %>% # deepest I can go for 2012 is 2.5, for 2013 is 2, for 2014 is 3.5
-  filter(num_obs_deep < 50) %>% # super-well-observed lakes make it hard to see the predictions on the plot
-  filter(stratifies_obs == lathrop_strat) %>% # Medicine Lake (120018088 had !stratifies_obs but lathrop_strat and sure looks stratified, just with noisy observations)
-  # filter(!site_id %in% c('nhdhr_70331641','nhdhr_143249705','nhdhr_120020225','nhdhr_120020213','nhdhr_120020220','nhdhr_91689717','nhdhr_120018220','nhdhr_34128424','nhdhr_120020207','nhdhr_105231881','nhdhr_91594459')) %>% # Anvil lake comes out as "Mixed, mispredicted" but sure looks like it's actually stratified but for a shorter period in the summer
-  filter(ifelse(stratifies_obs == FALSE & stratifies_pred == TRUE, site_id=='nhdhr_120020213', TRUE)) %>%
+  # filter(between(num_obs_deep, 6, 50)) %>% # super-well-observed lakes make it hard to see the predictions on the plot
+  # filter(ifelse(stratifies_obs == FALSE & stratifies_pred == TRUE, site_id=='nhdhr_120020213', TRUE)) %>% # custom selection for panel d
+  filter(lathrop_obs_agree) %>%
+  # filter(desired_pgdl_pb0_order) %>%
   group_by(stratifies_obs, stratifies_pred) %>%
-  arrange(desc(num_obs_deep)) %>%
+  arrange(desc(example_quality)) %>% # or could arrange by desc(num_obs_deep) instead
   slice(1) %>%
   ungroup() %>%
-  # rename(target_id = site_id) %>% # targest had target_id
-  # rename(site_id = target_id) %>% # eg_targets_info had site_id
+  filter(stratifies_obs | !stratifies_pred) %>%
+  
+  # now add information
   arrange(desc(stratifies_obs), desc(stratifies_obs == stratifies_pred)) %>%
   mutate(
     target_order = seq_len(n()),
@@ -165,6 +189,7 @@ targets <- candidate_sites %>%
   # arrange(target_name)
 t(targets)
 paste0("'", targets$site_id, "'", collapse=', ') %>% cat
+# on 4/11/21: 'nhdhr_59808243', 'nhdhr_91689611', 'nhdhr_120020759', 'nhdhr_120020213'
 
 #' # Original site-selection idea was these three panels:
 #' # * good performance and good improvement over PB0
@@ -377,18 +402,23 @@ plot_depth_area <- function(eg_sources_info, targets) {
     mutate(
       x = min(eg_sources_info$surface_area/1000000)*1.05,
       y = 0.98*max(eg_sources_info$max_depth),
-      lab = letters[targets$target_order+4])
+      lab = letters[targets$target_order+3])
+  strat_labels <- set_names(c('Stratified', 'Mixed'), c(TRUE, FALSE))
   ggplot(eg_sources_info, aes(x=surface_area/1000000, y=max_depth)) +
     # geom_point(data=filter(eg_sources_info, source_lathrop_strat == FALSE), aes(size=n_obs), color=neutral_colors[['dark']], shape=20) +
     # geom_point(data=filter(eg_sources_info, source_lathrop_strat == TRUE), aes(size=n_obs), color=neutral_colors[['light']], shape=20) +
-    geom_point(data=eg_sources_info, aes(color=source_lathrop_strat), shape=20) +
-    geom_point(data=mutate(targets, shape = c('Target','Top 1','Top 9')[c(1:3,1)]), aes(shape = shape), size=3, color='black') + # introducing shape here just to get the legend to show up; we'll override everything but the labels shortly
+    geom_point(data=eg_sources_info, aes(color=source_lathrop_strat, fill=source_lathrop_strat, shape=source_lathrop_strat), size=0.8) +
+    geom_point(data=mutate(targets, category = c('Target','Top 1','Top 9')), aes(alpha = category), shape=3, size=3, color='black') + # introducing alpha here just to get the legend to show up; we'll override everything but the labels shortly
     geom_point(data=filter(eg_sources_info, top_9 & !rank_predicted==1), shape = 21, size = 2, fill='transparent', color=pgmtl9_colors[['central']]) + # color=pgmtl9_colors[['dark']]
     geom_point(data=filter(eg_sources_info, rank_predicted==1), shape = 21, size = 2, fill='transparent', color=pgmtl_colors[['central']]) + # color=pgmtl9_colors[['dark']]
     geom_text(data=panel_letters, aes(x=x, y=y, label=lab), color='black', size=5) +
-    scale_color_manual('', breaks=c(TRUE,FALSE), values=set_names(neutral_colors[c('dark','light')], c(TRUE, FALSE)), labels=c(`TRUE`='Stratified', `FALSE`='Mixed')) +
-    scale_shape_manual('', breaks=c('Target','Top 1','Top 9'), values=c('Target'=3, 'Top 1'=3, 'Top 9'=3)) +
-    guides(shape = guide_legend('', override.aes = list(shape=c('Target'=3, 'Top 1'=21, 'Top 9'=21), color=c('black', pgmtl_colors[['central']], pgmtl9_colors[['central']]), fill='transparent'))) +
+    scale_shape_manual('', breaks=c(TRUE,FALSE), values=set_names(c(25, 22), c(TRUE, FALSE)), labels=strat_labels) +
+    scale_fill_manual('', breaks=c(TRUE,FALSE), values=set_names(c('gray40', 'lightgray'), c(TRUE, FALSE)), labels=strat_labels) +
+    scale_color_manual('', breaks=c(TRUE,FALSE), values=set_names(c('gray40', 'lightgray'), c(TRUE, FALSE)), labels=strat_labels) +
+    scale_alpha_manual('', breaks=c('Target','Top 1','Top 9'), values=c('Target'=1, 'Top 1'=1, 'Top 9'=1), labels=c('Target'='Target', 'Top 1'='Source 1', 'Top 9'='Source 2-9')) +
+    guides(alpha = guide_legend('', override.aes = list(
+      shape=c('Target'=3, 'Top 1'=21, 'Top 9'=21),
+      color=c('black', pgmtl_colors[['central']], pgmtl9_colors[['central']]), fill='transparent'))) +
     scale_x_log10(labels=function(x) sprintf('%s', as.character(signif(x, 1)))) +
     facet_grid(target_order ~ .) +
     xlab('Surface Area (km'^2~')') + ylab('Maximum Depth (m)') +
@@ -396,11 +426,6 @@ plot_depth_area <- function(eg_sources_info, targets) {
     theme(
       strip.text.y=element_blank(),
       panel.grid = element_blank(),
-      # legend.position=c(0.32, 0.7),
-      # legend.background=element_blank(),
-      # legend.key.size=unit(10, units='points'),
-      # legend.title=element_text(size=unit(10, units='points')),
-      # legend.spacing.y=unit(5, units='points'),
       legend.position='bottom', legend.direction='horizontal', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'))
 }
 egplot_depth_area <- plot_depth_area(eg_sources_info, targets)
@@ -411,35 +436,52 @@ plot_rmse_predobs <- function(eg_sources_info, targets) {
   rmse_range <- range(c(eg_sources_info$actual_rmse, eg_sources_info$predicted_rmse))
   panel_letters <- targets %>%
     mutate(
+      # source_lathrop_strat = TRUE,
       x = rmse_range[1] * 1.05,
       y = rmse_range[2] * 0.98,
-      lab = letters[targets$target_order+8])
+      lab = letters[targets$target_order+6])
   rmse_labels <- targets %>%
     mutate(
-      predicted_rmse=1.5, actual_rmse=9.5, # for positioning on the plot
-      lab=sprintf('PB0: %0.1f °C\nPGDL-MTL: %0.1f °C\nPGDL-MTL9: %0.1f °C', pb0_rmse, pgmtl_rmse, pgmtl9_rmse))
+      # source_lathrop_strat = TRUE, rank_category = # so mapping doesn't cause errors
+      y=1.5, x=9.5, # for positioning on the plot
+      # lab=sprintf('PB0: %0.1f °C\nPGDL-MTL: %0.1f °C\nPGDL-MTL9: %0.1f °C', pb0_rmse, pgmtl_rmse, pgmtl9_rmse))
+      lab=sprintf('PGDL-MTL: %0.1f °C\nPGDL-MTL9: %0.1f °C', pgmtl_rmse, pgmtl9_rmse))
+  strat_labels <- set_names(c('Stratified', 'Mixed'), c(TRUE, FALSE))
+  strat_colors <- set_names(c('gray40','lightgray'), names(strat_labels))
   eg_sources_info %>%
-    ggplot(aes(y=predicted_rmse, x=actual_rmse, color=rank_category)) +
+    ggplot(aes(y=predicted_rmse, x=actual_rmse, shape=source_lathrop_strat, color=rank_category, fill=rank_category)) +
     geom_abline(color='lightgray') +
-    geom_point(data=filter(eg_sources_info, rank_predicted > 9), shape=20) +
-    geom_point(data=filter(eg_sources_info, rank_predicted <= 9, rank_predicted > 1), shape=20) +
-    geom_point(data=filter(eg_sources_info, rank_predicted == 1), shape=20) +
-    geom_text(data=panel_letters, aes(x=x, y=y, label=lab), color='black', size=5) +
-    geom_vline(data=mutate(targets, linetype=c('PB0','PGDL-MTL','PGDL-MTL9')[c(1:3,1)]), aes(xintercept=pb0_rmse, linetype=linetype), color=model_colors[['PB0']]) + # introducing linetype just to get a line color legend
+    geom_point(data=filter(eg_sources_info, rank_predicted <= 9), aes(alpha = rank_category), size=0) + # introducing alpha here just to get the legend to show up; we'll override everything but the labels shortly
+    # geom_point(data=filter(eg_sources_info, rank_predicted > 9, source_lathrop_strat), color='gray40', fill='gray40', size=0.7) +
+    # geom_point(data=filter(eg_sources_info, rank_predicted > 9, !source_lathrop_strat), color='lightgray', fill='lightgray', size=0.7) +
+    
+    geom_point(data=filter(eg_sources_info, source_lathrop_strat), color='gray40', fill='gray40', size=0.7) +
+    geom_point(data=filter(eg_sources_info, !source_lathrop_strat), color='lightgray', fill='lightgray', size=0.7) +
+    geom_point(data=filter(eg_sources_info, top_9 & !rank_predicted==1), shape = 21, size = 2, fill='transparent', color=pgmtl9_colors[['central']]) + # color=pgmtl9_colors[['dark']]
+    geom_point(data=filter(eg_sources_info, rank_predicted==1), shape = 21, size = 2, fill='transparent', color=pgmtl_colors[['central']]) + # color=pgmtl9_colors[['dark']]
+    guides(alpha = guide_none()) +
+    guides(color = guide_legend('', override.aes = list(size=2, shape=21, fill='transparent'))) +
+    
+    # geom_point(data=filter(eg_sources_info, rank_predicted == 1)) +
+    geom_text(data=panel_letters, aes(x=x, y=y, label=lab), color='black', size=5, inherit.aes = FALSE) +
+    geom_text(data=rmse_labels, aes(x=x, y=y, label=lab), color='black', size=3, hjust=1, inherit.aes = FALSE) +
+    geom_vline(data=mutate(targets, linetype=c('PGDL-MTL','PGDL-MTL9')[c(1:2,1)]), aes(xintercept=pgmtl_rmse, linetype=linetype), color=model_colors[['PG-MTL']]) + # introducing linetype just to get a line color legend
     geom_vline(data=targets, aes(xintercept=pgmtl_rmse), color=model_colors[['PG-MTL']]) +
     geom_vline(data=targets, aes(xintercept=pgmtl9_rmse), color=model_colors[['PG-MTL9']]) +
-    geom_text(data=rmse_labels, aes(label=lab), color='black', size=3, hjust=1) +
-    scale_linetype_manual('', breaks=c('PB0','PGDL-MTL','PGDL-MTL9'), values=c('PB0'=1,'PGDL-MTL'=1,'PGDL-MTL9'=1)) +
-    guides(linetype = guide_legend('', override.aes = list(color=set_names(model_colors[c('PB0','PG-MTL','PG-MTL9')], c('PB0','PGDL-MTL','PGDL-MTL9'))))) +
-    # annotate('text', x = 1.1, y = 23, label='e', size=5) +
-    # scale_alpha_manual('Metamodel\nPrediction', values=c(1, 1, 0.5), breaks=levels(pgmtl_info$sources_info$rank_category)) +
-    scale_size_manual('', values=c(3, 2, 1), breaks=levels(pgmtl_info$sources_info$rank_category)) +
-    # scale_color_manual('Metamodel\nPrediction', values=c('black','#ffffffaa','white'), breaks=levels(pgmtl_info$sources_info$rank_category)) +
+    scale_shape_manual('', breaks=c(TRUE,FALSE), values=set_names(c(25, 22), c(TRUE, FALSE)), labels=strat_labels) +
+    guides(shape = guide_legend('', override.aes = list(fill=strat_colors, color=strat_colors))) +
+    scale_linetype_manual('', breaks=c('PGDL-MTL','PGDL-MTL9'), values=c('PGDL-MTL'=1,'PGDL-MTL9'=1)) +
+    guides(linetype = guide_legend('', override.aes = list(color=set_names(model_colors[c('PG-MTL','PG-MTL9')], c('PGDL-MTL','PGDL-MTL9'))))) +
+    # or to include PB0:
+    # geom_vline(data=mutate(targets, linetype=c('PB0','PGDL-MTL','PGDL-MTL9')[c(1:3,1)]), aes(xintercept=pb0_rmse, linetype=linetype), color=model_colors[['PB0']]) + # introducing linetype just to get a line color legend
+    # geom_vline(data=targets, aes(xintercept=pb0_rmse), color=model_colors[['PB0']]) +
+    # scale_linetype_manual('', breaks=c('PB0','PGDL-MTL','PGDL-MTL9'), values=c('PB0'=1,'PGDL-MTL'=1,'PGDL-MTL9'=1)) +
+    # guides(linetype = guide_legend('', override.aes = list(color=set_names(model_colors[c('PB0','PG-MTL','PG-MTL9')], c('PB0','PGDL-MTL','PGDL-MTL9'))))) +
     scale_color_manual('', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']], neutral_colors[['light']]), breaks=levels(pgmtl_info$sources_info$rank_category)) +
-    # scale_shape_manual('Target Lake', values=c(24,23,22,21)[1:nrow(targets)], guide='none') +
-    # scale_fill_manual('Target Lake', values=example_colors[1:nrow(targets)], guide='none') +
+    scale_fill_manual('', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']], neutral_colors[['light']]), breaks=levels(pgmtl_info$sources_info$rank_category)) +
+    # scale_size_manual('', values=c(3, 2, 1), breaks=levels(pgmtl_info$sources_info$rank_category)) +
+    # guides(size = guide_legend(override.aes = list(shape=21, fill = neutral_colors[['light']]))) +
     scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = rmse_range, ylim = rmse_range) +
-    guides(size = guide_legend(override.aes = list(shape=21, fill = neutral_colors[['light']]))) +
     facet_grid(target_order ~ .) +
     xlab('Actual RMSE (°C)') + ylab('Predicted RMSE (°C)') +
     theme_bw() + 
