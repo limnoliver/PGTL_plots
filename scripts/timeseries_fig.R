@@ -251,7 +251,7 @@ eg_sources_info <- targets %>%
 #eg_sources_info %>% filter(top_9) %>% group_by(source_id) %>% tally() %>% arrange(desc(n))
 
 #### Timeseries Figure ####
-temporary_read_timeseries_data <- function(targets, target_num=3, pgmtl_train_44225, plot_min_date, plot_max_date, depths) {
+read_published_timeseries_data <- function(targets, target_num=3, pgmtl_train_44225, plot_min_date, plot_max_date, depths) {
   target <- targets[[target_num,'site_id']]
   
   source_ranks <- pgmtl_train_44225 %>%
@@ -297,8 +297,8 @@ temporary_read_timeseries_data <- function(targets, target_num=3, pgmtl_train_44
     mutate(target_id=target) %>%
     return()
 }
-all_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
-  temporary_read_timeseries_data(
+published_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
+  read_published_timeseries_data(
     targets, target_num,
     pgmtl_train_44225, 
     plot_min_date, plot_max_date,
@@ -306,87 +306,110 @@ all_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
 }) %>%
   bind_rows() %>%
   filter(!is.na(temp_c))
-# read_timeseries_data <- function(targets, target_num=3, pgmtl_train_44225) {
-#   target <- targets[[target_num,'target_id']]
-#   source_files <- dir(sprintf('data/examples/mtl_outputs_for_fig/%s', target), pattern='source.*_nhdhr.*_output', full.names=TRUE)
-#   source_ranks <- pgmtl_train_44225 %>%
-#     filter(target_id == target) %>%
-#     arrange(predicted_rmse) %>%
-#     mutate(rank = 1:n()) %>%
-#     select(source_id, actual_rmse, rank)
-#   sources <- purrr::map(source_files, function(source_file) {
-#     source_site <- tibble(filename=source_file) %>%
-#       tidyr::extract(filename, into=c('source_rank', 'source_id'), regex='source([[:digit:]]+)_(nhdhr.*)_output', convert=TRUE) %>%
-#       mutate(source_id = gsub('nhdhr', 'nhdhr_', source_id),
-#              source_rank = source_rank + 1)
-#     read_preds_mtl_outputs_for_fig(source_file) %>% 
-#       mutate(
-#         #source_rank = source_site$source_rank, # covered in source_ranks, which is computed above and joined below
-#         source_id = source_site$source_id) %>%
-#       left_join(source_ranks, by=c('source_id'))
-#   }) %>% bind_rows()
-#   labels <- read_preds_mtl_outputs_for_fig(sprintf('data/examples/mtl_outputs_for_fig/%s/labels.feather', target)) %>%
-#     filter(!is.na(temp_c)) %>%
-#     mutate(source_id='Observed')
-#   pb0_preds <- read_preds_csv(sprintf('data/predictions/pb0_%s_temperatures.csv', target)) %>%
-#     mutate(
-#       source_id = 'PB0',
-#       actual_rmse = filter(all_eval_2366, site_id == target) %>% pull(pb0_rmse),
-#       rank = NA)
-#   
-#   bind_rows(sources, labels, pb0_preds) %>%
-#     mutate(target_id=target) %>%
-#     return()
-# }
-# old_all_target_data <- lapply(seq_len(nrow(old_targets)), function(target_num) {
-#   read_timeseries_data(old_targets, target_num, pgmtl_train_44225)
-# }) %>%
-#   bind_rows()
+#published_target_data %>% group_by(target_id, rank) %>% tally()
+
+read_source_n_timeseries_data <- function(targets, target_num=3, pgmtl_train_44225) {
+  target <- targets[[target_num,'site_id']]
+  
+  source_ranks <- pgmtl_train_44225 %>%
+    filter(target_id == target) %>%
+    arrange(predicted_rmse) %>%
+    mutate(rank = 1:n()) %>%
+    select(source_id, actual_rmse, rank) %>%
+    filter(rank %in% c(2:9, 96:100))
+  source_files <- dir(sprintf('data/examples/mtl_outputs_for_fig/%s', target), pattern='source.*_nhdhr.*_output', full.names=TRUE) %>%
+    grep(sprintf('nhdhr(%s)_', paste(gsub('nhdhr_', '', source_ranks$source_id), collapse='|')), ., value=TRUE)
+  if(length(source_files) == 0) return(tibble())
+  sources <- purrr::map(source_files, function(source_file) {
+    source_site <- tibble(filename=source_file) %>%
+      tidyr::extract(filename, into=c('source_rank', 'source_id'), regex='source([[:digit:]]+)_(nhdhr.*)_output', convert=TRUE) %>%
+      mutate(source_id = gsub('nhdhr', 'nhdhr_', source_id),
+             source_rank = source_rank + 1)
+    read_preds_mtl_outputs_for_fig(source_file) %>%
+      filter(between(date, plot_min_date, plot_max_date)) %>%
+      filter(depth == targets[[target_num,'depth_shallow']] | depth == targets[[target_num,'depth_deep']]) %>%
+      mutate(source_id = source_site$source_id)
+  }) %>% bind_rows() %>%
+    left_join(source_ranks, by=c('source_id'))
+  
+  # labels <- read_preds_mtl_outputs_for_fig(sprintf('data/examples/mtl_outputs_for_fig/%s/labels.feather', target)) %>%
+  #   filter(!is.na(temp_c)) %>%
+  #   mutate(source_id='Observed')
+  # pb0_preds <- read_preds_csv(sprintf('data/predictions/pb0_%s_temperatures.csv', target)) %>%
+  #   mutate(
+  #     source_id = 'PB0',
+  #     actual_rmse = filter(all_eval_2366, site_id == target) %>% pull(pb0_rmse),
+  #     rank = NA)
+  # bind_rows(sources, labels, pb0_preds) %>%
+
+  sources %>%
+    mutate(target_id=target) %>%
+    return()
+}
+source_n_target_data <- lapply(seq_len(nrow(targets)), function(target_num) {
+  read_source_n_timeseries_data(targets, target_num, pgmtl_train_44225)
+}) %>%
+  bind_rows()
+
+# combine published and source-n timeseries, removing dummy timeseries for which we now have data
+has_source_n_data <- source_n_target_data %>%
+  group_by(target_id, rank) %>%
+  summarize(has_source_n_data=TRUE, .groups='drop')
+dedup_published_target_data <- published_target_data %>%
+  left_join(has_source_n_data, by=c('target_id','rank')) %>%
+  filter(is.na(has_source_n_data))
+all_target_data <- bind_rows(dedup_published_target_data, source_n_target_data)
+all_target_data %>%
+  select(target_id, rank, source_id) %>%
+  distinct() %>%
+  arrange(target_id, rank, source_id) %>%
+  print(., n=nrow(.))
 
 plot_timeseries <- function(all_target_data, targets, common_depths, plot_min_date, plot_max_date, lake_xdate) {
   plot_data <- all_target_data %>%
     left_join(common_depths, by=c(target_id='site_id','depth')) %>%
-    filter(depth_class == 'deep' | source_id == 'Observed') %>%
+    filter(depth_class == 'deep') %>%
     filter(is.na(rank) | rank %in% c(1,9,99)) %>%
-    mutate(Model = ifelse(grepl('nhdhr', source_id), sprintf('Source %d', rank), source_id)) %>%
+    mutate(Model = ifelse(grepl('nhdhr', source_id), sprintf('Source %s', rank), source_id)) %>%
+    # mutate(Model = ifelse(grepl('nhdhr', source_id), sprintf('Source %s', ifelse(between(rank, 2, 9), '2-9', ifelse(between(rank, 96, 100), '96-100', rank))), source_id)) %>%
+    filter(Model != 'PB0') %>%
     left_join(targets, by=c(target_id = 'site_id'))
   lake_labels <- targets %>%
     mutate(
-      date=as.Date(lake_xdate), temp_c=30, depth_class='deep', # for positioning on the plot
+      date=as.Date(lake_xdate), temp_c=29.7, depth_class='deep', # for positioning on the plot
       lab=sprintf(
-        '%s\n%s, %s by PGDL-MTL\nPreds at %0.1fm of max %0.1fm',
+        '%s\n%s, %s PGDL-MTL\nMax depth %0.1fm\nPreds at %0.1fm',
         target_name,
         # ifelse(lathrop_strat, 'stratified', 'mixed'), # use with \nLathrop-%s
-        ifelse(stratifies_obs, 'Stratified', 'Mixed'), ifelse(stratifies_obs==stratifies_pred, 'as predicted', 'mispredicted'),
-        depth_deep, max_depth))
+        ifelse(stratifies_obs, 'Stratified', 'Mixed'), ifelse(stratifies_obs==stratifies_pred, 'accurate', 'inaccurate'),
+        max_depth, depth_deep))
   panel_letters <- targets %>%
     mutate(
       date=as.Date(plot_min_date),
       temp_c=34, depth_class='deep', # for positioning on the plot
       lab=letters[targets$target_order])
   ggplot(plot_data, aes(x=date, y=temp_c)) + # linetype=depth_class, fill=depth_class
-    geom_point(data=filter(plot_data, source_id == 'Observed'), aes(shape=depth_class), color=model_colors['Obs-shallow'], size=0.8) + #, shape=depth_class, fill=depth_class
-    # geom_point(data=filter(plot_data, source_id == 'Observed', depth_class=='shallow'), aes(shape=source_id), color=model_colors['Obs-shallow'], size=0.8) + #, shape=depth_class, fill=depth_class
-    geom_point(data=filter(plot_data, source_id == 'Observed', depth_class=='deep'), color=model_colors['Obs-deep'], size=0.8) + #, shape=depth_class, fill=depth_class
-    geom_line(data=filter(plot_data, source_id != 'Observed'), aes(color=Model), alpha=0.8) +
-    # geom_text(data=lake_labels[1,], aes(label=lab), color=example_colors[1], size=3) +
-    # geom_text(data=lake_labels[2,], aes(label=lab), color=example_colors[2], size=3) +
+    geom_line(data=filter(plot_data, source_id != 'Observed'), aes(color=Model, group=rank), alpha=0.8) +
+    geom_point(data=filter(plot_data, source_id == 'Observed'), aes(shape=Model), color=model_colors['Observed'], size=0.8) + #, shape=depth_class, fill=depth_class
     geom_text(data=lake_labels, aes(label=lab), color='black', size=3, hjust=0) +
     geom_text(data=panel_letters, aes(label=lab), color='black', size=5) +
-    scale_color_manual('', values=c('PB0'=model_colors[['PB0']], 'Source 1'=pgmtl_colors[['central']], 'Source 9'=pgmtl9_colors[['dark']], 'Source 99'=map_colors[['extended_targets']])) +
-    # scale_shape_manual('', values=setNames(c(25, 24), nm=levels(plot_data$depth_class))) +
-    # scale_fill_manual('', values=setNames(c(model_colors['Obs'],NA), nm=levels(plot_data$depth_class))) +
-    # scale_shape_manual('Observations', values=c(Observed = 19)) +
-    scale_shape_manual(values=c(shallow=19, deep=19), labels=c(shallow='Shallow Obs', deep='Deep Obs')) +
-    guides(shape = guide_legend(title='', override.aes = list(color=c(shallow=model_colors['Obs-shallow'], deep=model_colors['Obs-deep'])))) +
-    xlab('Date') +
+    scale_color_manual('', values=c(
+      'Source 1'=pgmtl_colors[['central']],
+      'Source 9'=pgmtl9_colors[['dark']],
+      'Source 99'=map_colors[['extended_targets']])) +
+      # 'Source 2-9'=pgmtl9_colors[['dark']], 
+      # 'Source 96-100'=map_colors[['extended_targets']])) +
+    scale_shape_manual('', values=c(Observed = 19)) +
+    guides(shape = guide_legend(title='', override.aes = list(color=model_colors[['Observed']]))) +
+    scale_x_date(date_labels='%b') +
+    xlab(sprintf('Date in %d', plot_year)) +
     ylab(expression(paste("Temperature (",degree,"C)"))) +
     theme_bw() +
     facet_grid(target_order ~ .) +
     theme(
       panel.grid = element_blank(),
       strip.text.y=element_blank(),
-      legend.position='bottom', legend.direction='horizontal', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'))
+      legend.position='bottom', legend.direction='horizontal', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'), legend.spacing.x=unit(0.1, 'lines'))
 }
 egplot_timeseries <- plot_timeseries(
   all_target_data,
@@ -394,16 +417,17 @@ egplot_timeseries <- plot_timeseries(
   common_depths,
   plot_min_date=plot_min_date,
   plot_max_date=plot_max_date,
-  lake_xdate=sprintf('%d-01-15', plot_year))
+  lake_xdate=sprintf('%d-01-20', plot_year))
 egplot_timeseries
 
 plot_depth_area <- function(eg_sources_info, targets) {
   panel_letters <- targets %>%
     mutate(
       x = min(eg_sources_info$surface_area/1000000)*1.05,
-      y = 0.98*max(eg_sources_info$max_depth),
+      y = 0.985*max(eg_sources_info$max_depth),
       lab = letters[targets$target_order+3])
   strat_labels <- set_names(c('Stratified', 'Mixed'), c(TRUE, FALSE))
+  strat_colors <- set_names(c('gray45', 'lightgray'), c(TRUE, FALSE))
   ggplot(eg_sources_info, aes(x=surface_area/1000000, y=max_depth)) +
     # geom_point(data=filter(eg_sources_info, source_lathrop_strat == FALSE), aes(size=n_obs), color=neutral_colors[['dark']], shape=20) +
     # geom_point(data=filter(eg_sources_info, source_lathrop_strat == TRUE), aes(size=n_obs), color=neutral_colors[['light']], shape=20) +
@@ -413,8 +437,8 @@ plot_depth_area <- function(eg_sources_info, targets) {
     geom_point(data=filter(eg_sources_info, rank_predicted==1), shape = 21, size = 2, fill='transparent', color=pgmtl_colors[['central']]) + # color=pgmtl9_colors[['dark']]
     geom_text(data=panel_letters, aes(x=x, y=y, label=lab), color='black', size=5) +
     scale_shape_manual('', breaks=c(TRUE,FALSE), values=set_names(c(25, 22), c(TRUE, FALSE)), labels=strat_labels) +
-    scale_fill_manual('', breaks=c(TRUE,FALSE), values=set_names(c('gray40', 'lightgray'), c(TRUE, FALSE)), labels=strat_labels) +
-    scale_color_manual('', breaks=c(TRUE,FALSE), values=set_names(c('gray40', 'lightgray'), c(TRUE, FALSE)), labels=strat_labels) +
+    scale_fill_manual('', breaks=c(TRUE,FALSE), values=strat_colors, labels=strat_labels) +
+    scale_color_manual('', breaks=c(TRUE,FALSE), values=strat_colors, labels=strat_labels) +
     scale_alpha_manual('', breaks=c('Target','Top 1','Top 9'), values=c('Target'=1, 'Top 1'=1, 'Top 9'=1), labels=c('Target'='Target', 'Top 1'='Source 1', 'Top 9'='Source 2-9')) +
     guides(alpha = guide_legend('', override.aes = list(
       shape=c('Target'=3, 'Top 1'=21, 'Top 9'=21),
@@ -426,14 +450,14 @@ plot_depth_area <- function(eg_sources_info, targets) {
     theme(
       strip.text.y=element_blank(),
       panel.grid = element_blank(),
-      legend.position='bottom', legend.direction='horizontal', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'))
+      legend.position='bottom', legend.direction='horizontal', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'), legend.spacing.x=unit(0.1, 'lines'))
 }
 egplot_depth_area <- plot_depth_area(eg_sources_info, targets)
 egplot_depth_area
 # ggsave('figures/examples_depth_area.png', plot=egplot_depth_area, width=6, height=4)
 
 plot_rmse_predobs <- function(eg_sources_info, targets) {
-  rmse_range <- range(c(eg_sources_info$actual_rmse, eg_sources_info$predicted_rmse))
+  rmse_range <- range(c(1, eg_sources_info$actual_rmse, eg_sources_info$predicted_rmse))
   panel_letters <- targets %>%
     mutate(
       # source_lathrop_strat = TRUE,
@@ -443,56 +467,37 @@ plot_rmse_predobs <- function(eg_sources_info, targets) {
   rmse_labels <- targets %>%
     mutate(
       # source_lathrop_strat = TRUE, rank_category = # so mapping doesn't cause errors
-      y=1.5, x=9.5, # for positioning on the plot
+      y=1.24, x=9.1, # for positioning on the plot, log-log scale
+      y=1.4, x=8.5, #9.1, # for positioning on the plot, non-log scale
       # lab=sprintf('PB0: %0.1f °C\nPGDL-MTL: %0.1f °C\nPGDL-MTL9: %0.1f °C', pb0_rmse, pgmtl_rmse, pgmtl9_rmse))
       lab=sprintf('PGDL-MTL: %0.1f °C\nPGDL-MTL9: %0.1f °C', pgmtl_rmse, pgmtl9_rmse))
-  strat_labels <- set_names(c('Stratified', 'Mixed'), c(TRUE, FALSE))
-  strat_colors <- set_names(c('gray40','lightgray'), names(strat_labels))
   eg_sources_info %>%
-    ggplot(aes(y=predicted_rmse, x=actual_rmse, shape=source_lathrop_strat, color=rank_category, fill=rank_category)) +
+    ggplot(aes(y=predicted_rmse, x=actual_rmse, color=rank_category)) +
     geom_abline(color='lightgray') +
-    geom_point(data=filter(eg_sources_info, rank_predicted <= 9), aes(alpha = rank_category), size=0) + # introducing alpha here just to get the legend to show up; we'll override everything but the labels shortly
-    # geom_point(data=filter(eg_sources_info, rank_predicted > 9, source_lathrop_strat), color='gray40', fill='gray40', size=0.7) +
-    # geom_point(data=filter(eg_sources_info, rank_predicted > 9, !source_lathrop_strat), color='lightgray', fill='lightgray', size=0.7) +
-    
-    geom_point(data=filter(eg_sources_info, source_lathrop_strat), color='gray40', fill='gray40', size=0.7) +
-    geom_point(data=filter(eg_sources_info, !source_lathrop_strat), color='lightgray', fill='lightgray', size=0.7) +
-    geom_point(data=filter(eg_sources_info, top_9 & !rank_predicted==1), shape = 21, size = 2, fill='transparent', color=pgmtl9_colors[['central']]) + # color=pgmtl9_colors[['dark']]
-    geom_point(data=filter(eg_sources_info, rank_predicted==1), shape = 21, size = 2, fill='transparent', color=pgmtl_colors[['central']]) + # color=pgmtl9_colors[['dark']]
-    guides(alpha = guide_none()) +
-    guides(color = guide_legend('', override.aes = list(size=2, shape=21, fill='transparent'))) +
-    
-    # geom_point(data=filter(eg_sources_info, rank_predicted == 1)) +
+    geom_point(data=eg_sources_info, aes(color = rank_category), size=0.8) +
+    geom_point(data=filter(eg_sources_info, rank_category %in% c('Top 1','Top 9')), aes(color = rank_category), size=0.8) + # overplot with the important ones
+    scale_color_manual('', breaks=levels(pgmtl_info$sources_info$rank_category),
+                       values=c('Top 1'=pgmtl_colors[['central']], 'Top 9'=pgmtl9_colors[['central']], 'Not Top 9'=neutral_colors[['light']]),
+                       labels=c('Top 1'='Source 1', 'Top 9'='Source 2-9', 'Not Top 9'='Source >9')) +
     geom_text(data=panel_letters, aes(x=x, y=y, label=lab), color='black', size=5, inherit.aes = FALSE) +
     geom_text(data=rmse_labels, aes(x=x, y=y, label=lab), color='black', size=3, hjust=1, inherit.aes = FALSE) +
     geom_vline(data=mutate(targets, linetype=c('PGDL-MTL','PGDL-MTL9')[c(1:2,1)]), aes(xintercept=pgmtl_rmse, linetype=linetype), color=model_colors[['PG-MTL']]) + # introducing linetype just to get a line color legend
     geom_vline(data=targets, aes(xintercept=pgmtl_rmse), color=model_colors[['PG-MTL']]) +
     geom_vline(data=targets, aes(xintercept=pgmtl9_rmse), color=model_colors[['PG-MTL9']]) +
-    scale_shape_manual('', breaks=c(TRUE,FALSE), values=set_names(c(25, 22), c(TRUE, FALSE)), labels=strat_labels) +
-    guides(shape = guide_legend('', override.aes = list(fill=strat_colors, color=strat_colors))) +
     scale_linetype_manual('', breaks=c('PGDL-MTL','PGDL-MTL9'), values=c('PGDL-MTL'=1,'PGDL-MTL9'=1)) +
     guides(linetype = guide_legend('', override.aes = list(color=set_names(model_colors[c('PG-MTL','PG-MTL9')], c('PGDL-MTL','PGDL-MTL9'))))) +
-    # or to include PB0:
-    # geom_vline(data=mutate(targets, linetype=c('PB0','PGDL-MTL','PGDL-MTL9')[c(1:3,1)]), aes(xintercept=pb0_rmse, linetype=linetype), color=model_colors[['PB0']]) + # introducing linetype just to get a line color legend
-    # geom_vline(data=targets, aes(xintercept=pb0_rmse), color=model_colors[['PB0']]) +
-    # scale_linetype_manual('', breaks=c('PB0','PGDL-MTL','PGDL-MTL9'), values=c('PB0'=1,'PGDL-MTL'=1,'PGDL-MTL9'=1)) +
-    # guides(linetype = guide_legend('', override.aes = list(color=set_names(model_colors[c('PB0','PG-MTL','PG-MTL9')], c('PB0','PGDL-MTL','PGDL-MTL9'))))) +
-    scale_color_manual('', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']], neutral_colors[['light']]), breaks=levels(pgmtl_info$sources_info$rank_category)) +
-    scale_fill_manual('', values=c(pgmtl_colors[['central']],pgmtl9_colors[['dark']], neutral_colors[['light']]), breaks=levels(pgmtl_info$sources_info$rank_category)) +
-    # scale_size_manual('', values=c(3, 2, 1), breaks=levels(pgmtl_info$sources_info$rank_category)) +
-    # guides(size = guide_legend(override.aes = list(shape=21, fill = neutral_colors[['light']]))) +
-    scale_x_log10() + scale_y_log10() + coord_cartesian(xlim = rmse_range, ylim = rmse_range) +
+    scale_x_continuous(breaks=c(1:9)) +
+    scale_y_continuous(breaks=c(1:9)) +
+    # scale_x_log10(breaks=c(1:9)) +
+    # scale_y_log10() +
+    coord_cartesian(xlim = rmse_range, ylim = rmse_range) +
     facet_grid(target_order ~ .) +
     xlab('Actual RMSE (°C)') + ylab('Predicted RMSE (°C)') +
     theme_bw() + 
     theme(
       strip.text.y=element_blank(),
       panel.grid = element_blank(),
-      # legend.position=c(0.24,0.82),
-      # legend.background=element_blank(),
-      # legend.title=element_text(size=unit(10, units='points')),
-      # legend.spacing.y=unit(3, units='points'))
-      legend.position='bottom', legend.direction='horizontal', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'))
+      legend.position='bottom', legend.direction='horizontal', legend.box='vertical', legend.spacing.y=unit(-0.3, 'lines'), legend.spacing.x=unit(0.1, 'lines'))
 }
 egplot_rmse_predobs <- plot_rmse_predobs(eg_sources_info, targets)
 egplot_rmse_predobs
@@ -506,5 +511,5 @@ examples_figure <- grid.arrange(
     egplot_rmse_predobs,
     align = 'h', axis = 'bt'
   ),
-  ncol=3, widths = c(1.5, 1, 1))
-cowplot::save_plot('figures/examples_multipanel.png', examples_figure, base_height=12, base_width=12)
+  ncol=3, widths = c(1, 1, 1))
+cowplot::save_plot('figures/examples_multipanel.png', examples_figure, base_height=9, base_width=9)

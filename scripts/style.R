@@ -1,8 +1,7 @@
 model_colors <-  c(
   # setNames(RColorBrewer::brewer.pal(4, 'Dark2'), c('PB-MTL','PG-MTL','PG-MTL9','Obs')), # Obs is pink
   setNames(RColorBrewer::brewer.pal(3, 'Dark2'), c('PB-MTL','PG-MTL','PG-MTL9')),
-  'Obs-shallow' = 'lightgray',
-  'Obs-deep' = 'black',
+  'Observed'='black',
   'PB0'='darkgray')
 pbmtl_colors <- c(dark='#105d46', central='#7570b3', light='#2bdba6') # https://www.colorhexa.com/1B9E77
 pgmtl9_colors <- c(dark='#4f4a8c', central='#7570b3', light='#a5a2ce', neutral='#e4e3f0') # https://www.colorhexa.com/7570b3
