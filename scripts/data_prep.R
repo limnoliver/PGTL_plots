@@ -38,8 +38,9 @@ lake_spatial <- sf::read_sf('data/spatial/study_lakes.shp')
 lake_metadata_full <- lake_metadata %>%
   select(site_id, lake_name, max_depth, surface_area, n_obs, lathrop_strat, glm_strat_perc) %>%
   mutate(
-    lathrop_strat=as.factor(lathrop_strat),
-    lathrop_recalc = (max_depth-0.1)/log10(surface_area/10000))
+    lathrop_strat = lathrop_strat == 1,
+    lathrop_recalc = (max_depth-0.1)/log10(surface_area/10000),
+    lathrop_restrat = lathrop_recalc > 3.8)
 # surface_area appears to be in m2, based on Wikipedia's statement that Lake Wingra is 1.3 km2 (which is 1300000 m2 == 130 ha)
 
 # Read PB results from Jordan via Teams
