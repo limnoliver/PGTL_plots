@@ -48,7 +48,6 @@ sbtools::item_file_download(
   destinations=sprintf('data/%s', temp_obs_file),
   overwrite_file=TRUE)
 unzip('data/temperature_observations.zip', exdir='data')
-temp_obs <- readr::read_csv('data/temperature_observations.csv', col_types=cols())
 
 # predictions for example sites...they take ~10 minutes per model type to download
 # sites_needing_preds <- grep('^nhdhr_.*', dir('data/examples/mtl_outputs_for_fig'), value=TRUE) %>% # use these as a guide for what to download from SB

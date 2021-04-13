@@ -176,7 +176,7 @@ targets <- candidate_sites %>%
   arrange(desc(example_quality)) %>% # or could arrange by desc(num_obs_deep) instead
   slice(1) %>%
   ungroup() %>%
-  filter(stratifies_obs | !stratifies_pred) %>%
+  filter(stratifies_obs | !stratifies_pred) %>% # omit that 4th category (!stratifies_obs & stratifies_pred) after all
   
   # now add information
   arrange(desc(stratifies_obs), desc(stratifies_obs == stratifies_pred)) %>%
@@ -359,11 +359,11 @@ dedup_published_target_data <- published_target_data %>%
   left_join(has_source_n_data, by=c('target_id','rank')) %>%
   filter(is.na(has_source_n_data))
 all_target_data <- bind_rows(dedup_published_target_data, source_n_target_data)
-all_target_data %>%
-  select(target_id, rank, source_id) %>%
-  distinct() %>%
-  arrange(target_id, rank, source_id) %>%
-  print(., n=nrow(.))
+# all_target_data %>%
+#   select(target_id, rank, source_id) %>%
+#   distinct() %>%
+#   arrange(target_id, rank, source_id) %>%
+#   print(., n=nrow(.))
 
 plot_timeseries <- function(all_target_data, targets, common_depths, plot_min_date, plot_max_date, lake_xdate) {
   plot_data <- all_target_data %>%
@@ -389,7 +389,7 @@ plot_timeseries <- function(all_target_data, targets, common_depths, plot_min_da
       temp_c=34, depth_class='deep', # for positioning on the plot
       lab=letters[targets$target_order])
   ggplot(plot_data, aes(x=date, y=temp_c)) + # linetype=depth_class, fill=depth_class
-    geom_line(data=filter(plot_data, source_id != 'Observed'), aes(color=Model, group=rank), alpha=0.8) +
+    geom_line(data=filter(plot_data, source_id != 'Observed'), aes(color=Model, group=rank)) +
     geom_point(data=filter(plot_data, source_id == 'Observed'), aes(shape=Model), color=model_colors['Observed'], size=0.8) + #, shape=depth_class, fill=depth_class
     geom_text(data=lake_labels, aes(label=lab), color='black', size=3, hjust=0) +
     geom_text(data=panel_letters, aes(label=lab), color='black', size=5) +
@@ -513,3 +513,14 @@ examples_figure <- grid.arrange(
   ),
   ncol=3, widths = c(1, 1, 1))
 cowplot::save_plot('figures/examples_multipanel.png', examples_figure, base_height=9, base_width=9)
+cowplot::save_plot('figures/examples_multipanel.eps', examples_figure, base_height=9, base_width=9)
+
+## Stats for text
+
+all_eval_2366 %>% filter(site_id %in% core_sites) %>% left_join(lake_metadata_full, by='site_id') %>% group_by(lathrop_strat) %>%
+  rename(rmse = pgmtl_rmse) %>%
+  summarize(n=n(), min = min(rmse), median = median(rmse), mean = mean(rmse), max = max(rmse), sd = sd(rmse))
+all_eval_2366 %>% filter(site_id %in% core_sites) %>% left_join(lake_metadata_full, by='site_id') %>% group_by(lathrop_strat) %>%
+  rename(rmse = pgmtl9_rmse) %>%
+  summarize(n=n(), min = min(rmse), median = median(rmse), mean = mean(rmse), max = max(rmse), sd = sd(rmse))
+

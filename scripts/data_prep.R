@@ -43,6 +43,8 @@ lake_metadata_full <- lake_metadata %>%
     lathrop_restrat = lathrop_recalc > 3.8)
 # surface_area appears to be in m2, based on Wikipedia's statement that Lake Wingra is 1.3 km2 (which is 1300000 m2 == 130 ha)
 
+temp_obs <- readr::read_csv('data/temperature_observations.csv', col_types=cols())
+
 # Read PB results from Jordan via Teams
 # pball_mtl_305 <- read_csv('data/old/GLM_metamodel_predicted_sources_glm_transfer_pball_test_lakes.csv') %>%
 #   transmute(target_id=sprintf('nhdhr_%s', `target_id(nhdhr)`),
