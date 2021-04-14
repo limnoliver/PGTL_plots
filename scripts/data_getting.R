@@ -40,15 +40,26 @@ sbtools::item_file_download(
 lake_metadata <- readr::read_csv('data/lake_metadata.csv', col_types=cols())
 unzip('data/zips/01_spatial.zip', exdir='data/spatial')
 
+# observations
+temp_obs_file <- 'temperature_observations.zip'
+sbtools::item_file_download(
+  sb_id='5ebe566a82ce476925e44b29',
+  names=temp_obs_file,
+  destinations=sprintf('data/%s', temp_obs_file),
+  overwrite_file=TRUE)
+unzip('data/temperature_observations.zip', exdir='data')
+
 # predictions for example sites...they take ~10 minutes per model type to download
-example_sites <- grep('^nhdhr_.*', dir('data/examples/mtl_outputs_for_fig'), value=TRUE) # use these as a guide for what to download from SB
+# sites_needing_preds <- grep('^nhdhr_.*', dir('data/examples/mtl_outputs_for_fig'), value=TRUE) %>% # use these as a guide for what to download from SB
+#   c('nhdhr_141288146', 'nhdhr_155636695', 'nhdhr_105231881', 'nhdhr_114542575')
+sites_needing_preds <- read_csv('data/pbmtl_evaluation.csv', col_types=cols()) %>% pull(site_id)
 if(!dir.exists('data/zips')) dir.create('data/zips')
 if(!dir.exists('data/predictions')) dir.create('data/predictions')
-lapply(example_sites, function(site_id) {
+purrr::walk(sites_needing_preds, function(site_id) {
   group <- lake_metadata %>%
     filter(site_id == !!site_id) %>%
     pull(group_id)
-  for(model in c('pb0')) { #c('pb0','pball','pgmtl','pgmtl9')
+  for(model in c('pb0', 'pgmtl')) { #c('pb0','pball','pgmtl','pgmtl9')
     zipfile <- sprintf('data/zips/%s_predictions_%s.zip', model, group)
     if(!file.exists(zipfile)) {
       message(sprintf('downloading %s', basename(zipfile)))
@@ -66,7 +77,7 @@ lapply(example_sites, function(site_id) {
 
 # source model info - predicted and observed RMSEs
 sbtools::item_file_download(
-  sb_id='5ebe569582ce476925e44b2f',
+  sb_id='5ebe577782ce476925e44b32',
   names='all_MTL_RMSE_predictions.csv',
   destinations='data/all_MTL_RMSE_predictions.csv',
   overwrite_file = TRUE)
